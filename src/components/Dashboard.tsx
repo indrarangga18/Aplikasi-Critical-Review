@@ -243,8 +243,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <Card title="Publikasi per Tahun (korpus)">
           {a.publicationsPerYear.length ? <TrendLine data={a.publicationsPerYear} height={260} /> : <Empty />}
         </Card>
-        <Card title="Word Cloud Keyword (field KW korpus)" hint="Ukuran kata ∝ frekuensi kemunculan di korpus.">
-          {a.topCorpusKeywords.length ? <WordCloud data={a.topCorpusKeywords.slice(0, 30)} height={300} /> : <Empty text="Field KW korpus kosong." />}
+        <Card title="Word Cloud Keyword Korpus" hint={`Ukuran kata ∝ frekuensi. Sumber: ${a.keywordCloud.source}.`}>
+          {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}
         </Card>
       </div>
 

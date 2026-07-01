@@ -146,6 +146,37 @@ export function topCorpusKeywords(records: RisRecord[], n = 20): CountPair[] {
   return mostCommon(counter(all), n).map(([label, value]) => ({ label, value }));
 }
 
+/** Word-cloud data: uses the KW field when present, else falls back to
+ *  the most frequent meaningful words from titles + abstracts. */
+export interface CloudResult {
+  terms: CountPair[];
+  source: string;
+}
+
+export function keywordCloud(records: RisRecord[], n = 30): CloudResult {
+  const corpusKw = records.flatMap((r) => r.keywords);
+  if (corpusKw.length >= 12) {
+    return {
+      terms: mostCommon(counter(corpusKw), n).map(([label, value]) => ({ label, value })),
+      source: "field KW korpus",
+    };
+  }
+  // Fallback: unigram frequency from title + abstract, stopwords removed.
+  const words: string[] = [];
+  for (const r of records) {
+    const toks = (r.title + " " + r.abstract)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 3 && !STOPWORDS.has(w) && !/^\d+$/.test(w));
+    words.push(...toks);
+  }
+  return {
+    terms: mostCommon(counter(words), n).map(([label, value]) => ({ label, value })),
+    source: "kata terpenting judul + abstrak (field KW kosong)",
+  };
+}
+
 // ---------- Keyword strength (step 6) ----------
 export interface StrengthRow {
   keyword: string;
@@ -411,6 +442,7 @@ export interface AnalysisResult {
   topAuthors: CountPair[];
   topSources: CountPair[];
   topCorpusKeywords: CountPair[];
+  keywordCloud: CloudResult;
   strength: StrengthRow[];
   problem: ProblemResult;
   cooc: CoocResult;
@@ -431,6 +463,7 @@ export function runAnalysis(records: RisRecord[], keywords: string[]): AnalysisR
     topAuthors: topAuthors(records),
     topSources: topSources(records),
     topCorpusKeywords: topCorpusKeywords(records),
+    keywordCloud: keywordCloud(records),
     strength: keywordStrength(records, keywords),
     problem: problemIdentification(matched),
     cooc: cooccurrence(records),
