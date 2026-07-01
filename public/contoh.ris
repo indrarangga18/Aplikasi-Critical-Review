@@ -1,0 +1,56 @@
+TY  - JOUR
+TI  - Deep learning for early sepsis detection in the intensive care unit
+AB  - Sepsis remains a leading cause of mortality in the ICU. However, early detection remains unclear and there is a lack of robust models. We propose a deep learning approach that improves mortality prediction using electronic health records.
+AU  - Smith, John
+AU  - Lee, Karen
+PY  - 2023
+JO  - Nature Medicine
+KW  - deep learning
+KW  - sepsis
+KW  - icu
+KW  - early detection
+DO  - 10.1000/example.1
+ER  -
+TY  - JOUR
+TI  - Machine learning models for mortality prediction: a systematic review
+AB  - A key challenge is the limited availability of labelled data. Early detection of deterioration is difficult and current approaches are insufficient.
+AU  - Lee, Karen
+AU  - Garcia, Maria
+PY  - 2019
+JO  - JAMA
+KW  - machine learning
+KW  - mortality
+KW  - icu
+ER  -
+TY  - JOUR
+TI  - Transfer learning for clinical time series in critical care
+AB  - Clinical time series are scarce and heterogeneous. We show that transfer learning mitigates the gap between hospitals for sepsis and mortality tasks.
+AU  - Chen, Wei
+PY  - 2022
+JO  - Lancet Digital Health
+KW  - transfer learning
+KW  - deep learning
+KW  - sepsis
+KW  - early detection
+ER  -
+TY  - JOUR
+TI  - Explainable AI for ICU risk scoring
+AB  - Clinicians need interpretable models. However, most deep learning systems remain black boxes, which is a limitation for adoption in the ICU.
+AU  - Garcia, Maria
+AU  - Smith, John
+PY  - 2021
+JO  - Critical Care Medicine
+KW  - explainable ai
+KW  - icu
+KW  - deep learning
+ER  -
+TY  - JOUR
+TI  - Sepsis biomarkers and outcome prediction
+AB  - Traditional biomarkers have limited sensitivity. There is a need for combined models linking biomarkers with mortality outcomes.
+AU  - Rossi, Marco
+PY  - 2018
+JO  - Intensive Care Medicine
+KW  - sepsis
+KW  - mortality
+KW  - biomarkers
+ER  -
