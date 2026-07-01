@@ -127,6 +127,52 @@ export function DivergingBar({
   );
 }
 
+// Lightweight CSS word cloud — font size scales with frequency.
+const CLOUD_COLORS = ["#c4b5fd", "#a78bfa", "#f0abfc", "#f472b6", "#93c5fd", "#818cf8", "#e879f9"];
+
+export function WordCloud({
+  data,
+  height = 300,
+}: {
+  data: { label: string; value: number }[];
+  height?: number;
+}) {
+  if (!data.length) return null;
+  const values = data.map((d) => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const size = (v: number) => {
+    if (max === min) return 26;
+    return 13 + ((v - min) / (max - min)) * 34; // 13px .. 47px
+  };
+  // Deterministic ordering (largest in the middle) for a cloud-like balance.
+  const ordered = [...data].sort((a, b) => b.value - a.value);
+  const arranged: { label: string; value: number }[] = [];
+  ordered.forEach((d, i) => (i % 2 === 0 ? arranged.push(d) : arranged.unshift(d)));
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 content-center overflow-hidden px-2"
+      style={{ height }}
+    >
+      {arranged.map((d, i) => (
+        <span
+          key={d.label}
+          title={`${d.label}: ${d.value}`}
+          className="font-semibold leading-tight transition hover:opacity-80"
+          style={{
+            fontSize: `${size(d.value)}px`,
+            color: CLOUD_COLORS[i % CLOUD_COLORS.length],
+            opacity: 0.55 + (0.45 * (d.value - min)) / (max - min || 1),
+          }}
+        >
+          {d.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // Simple CSS-grid heatmap (recharts has no native heatmap).
 export function Heatmap({
   labels,

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { runAnalysis } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, GroupedBar, HBar, Heatmap, TrendLine } from "@/components/Charts";
+import { DivergingBar, GroupedBar, HBar, Heatmap, TrendLine, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
@@ -243,8 +243,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <Card title="Publikasi per Tahun (korpus)">
           {a.publicationsPerYear.length ? <TrendLine data={a.publicationsPerYear} height={260} /> : <Empty />}
         </Card>
-        <Card title="Keyword Terbanyak (field KW korpus)">
-          {a.topCorpusKeywords.length ? <HBar data={a.topCorpusKeywords.slice(0, 12)} height={300} color="#818cf8" /> : <Empty text="Field KW korpus kosong." />}
+        <Card title="Word Cloud Keyword (field KW korpus)" hint="Ukuran kata ∝ frekuensi kemunculan di korpus.">
+          {a.topCorpusKeywords.length ? <WordCloud data={a.topCorpusKeywords.slice(0, 30)} height={300} /> : <Empty text="Field KW korpus kosong." />}
         </Card>
       </div>
 
