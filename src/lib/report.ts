@@ -85,7 +85,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 <title>Critical Review — ${esc(meta.judul || meta.filename)}</title>
 <style>
   :root { color-scheme: light; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color:#0f172a; background:#f8fafc; margin:0; padding:0; }
   .wrap { max-width: 860px; margin: 0 auto; padding: 40px 28px 80px; }
   .hero { background: linear-gradient(135deg,#4f46e5,#7c3aed 55%,#db2777); color:#fff; border-radius: 22px; padding: 34px 32px; box-shadow: 0 20px 45px -20px rgba(79,70,229,.6); }
@@ -119,6 +119,12 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   .warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 14px; font-size:13px; margin-top:12px; }
   .foot { color:#94a3b8; font-size:12px; text-align:center; margin-top:30px; line-height:1.6; }
   @media (max-width:640px){ .cols{grid-template-columns:1fr;} }
+  @media print {
+    body { background:#fff; }
+    .wrap { padding: 8px 0 0; max-width: 100%; }
+    section, .novelty, .hero { break-inside: avoid; page-break-inside: avoid; }
+    .foot { page-break-inside: avoid; }
+  }
 </style>
 </head>
 <body>

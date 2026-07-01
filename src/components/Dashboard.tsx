@@ -5,8 +5,8 @@ import { motion } from "framer-motion";
 import {
   Award,
   BarChart3,
-  Download,
   ExternalLink,
+  FileDown,
   Lightbulb,
   Loader2,
   Mail,
@@ -37,15 +37,18 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   const generatedAt = () =>
     new Date().toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" });
 
-  const download = () => {
+  const downloadPdf = () => {
     const html = buildReportHtml(a, { ...meta, generatedAt: generatedAt() });
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `critical-review-${(data.judul || "laporan").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.html`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const w = window.open("", "_blank", "width=900,height=1000");
+    if (!w) {
+      setToast({ ok: false, msg: "Popup diblokir browser. Izinkan popup untuk situs ini lalu coba lagi." });
+      return;
+    }
+    // Auto-trigger the print dialog (which offers "Save as PDF").
+    const trigger = `<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);}<\/script>`;
+    w.document.open();
+    w.document.write(html + trigger);
+    w.document.close();
   };
 
   const sendEmail = async () => {
@@ -83,8 +86,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={download} className="btn-secondary">
-            <Download className="w-4 h-4" /> Unduh HTML
+          <button onClick={downloadPdf} className="btn-secondary">
+            <FileDown className="w-4 h-4" /> Unduh PDF
           </button>
           <button onClick={sendEmail} disabled={sending} className="btn-primary">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
