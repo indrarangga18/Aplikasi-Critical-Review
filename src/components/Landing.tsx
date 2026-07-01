@@ -138,7 +138,7 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
           {step === 0 && (
             <motion.div key="s0" {...anim}>
               <Field icon={<User className="w-4 h-4" />} label="Nama lengkap">
-                <input className={inputCls} placeholder="mis. Reza Ronny Hermawan" value={name} onChange={(e) => setName(e.target.value)} />
+                <input className={inputCls} placeholder="mis. John Doe" value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
               <Field icon={<span className="text-sm">@</span>} label="Email (tujuan pengiriman laporan)">
                 <input className={inputCls} placeholder="nama@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
