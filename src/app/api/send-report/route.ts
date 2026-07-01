@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   });
   const fullMeta: ReportMeta = { ...meta, generatedAt };
 
-  const analysis = runAnalysis(records, keywords);
+  const analysis = runAnalysis(records, keywords, meta.judul);
   const html = buildReportHtml(analysis, fullMeta);
 
   const resend = new Resend(apiKey);

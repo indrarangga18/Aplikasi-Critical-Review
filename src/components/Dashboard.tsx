@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   Award,
   BarChart3,
+  Combine,
   ExternalLink,
   FileDown,
   Lightbulb,
@@ -13,15 +14,16 @@ import {
   Network,
   RotateCcw,
   Send,
+  Target,
   TriangleAlert,
 } from "lucide-react";
 import { runAnalysis } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, GroupedBar, HBar, Heatmap, TrendLine, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitScatter, GroupedBar, HBar, Heatmap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
-  const a = useMemo(() => runAnalysis(data.records, data.keywords), [data]);
+  const a = useMemo(() => runAnalysis(data.records, data.keywords, data.judul), [data]);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -164,6 +166,79 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
             Arah paling menjanjikan: <b>{a.recommendations[0].combo}</b> (co-occurrence={a.recommendations[0].cooccurrence}, skor={a.recommendations[0].score}).
           </div>
         )}
+      </Card>
+
+      {/* Venn — overlapping domains */}
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card
+          title="Domain yang Beririsan (Diagram Venn)"
+          icon={<Combine className="w-4 h-4" />}
+          hint={`3 domain tersering: ${a.venn.sets.join(", ")}. Angka = jumlah referensi di tiap wilayah.`}
+        >
+          <Venn sets={a.venn.sets} regions={a.venn} />
+          <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
+            <b>Rekomendasi:</b> {a.venn.recommendation}
+          </div>
+        </Card>
+
+        <Card
+          title="Kesesuaian Judul ↔ Rekomendasi"
+          icon={<Target className="w-4 h-4" />}
+          hint="Sumbu-X: skor rekomendasi. Sumbu-Y: seberapa banyak kata kombinasi sudah ada di judul Anda. Titik kanan-atas = menjanjikan sekaligus sejalan dengan judul."
+        >
+          <FitScatter data={a.titleFit.map((f) => ({ combo: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={300} />
+        </Card>
+      </div>
+
+      {/* Title fit table */}
+      <Card title="Tabel Kesesuaian Judul dengan Rekomendasi" icon={<Target className="w-4 h-4" />} hint="Cek apakah kata dari tiap kombinasi rekomendasi sudah tercermin di judul penelitian Anda." className="mb-4">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400 border-b border-white/10">
+                <th className="py-2 pr-3 font-medium">Kombinasi rekomendasi</th>
+                <th className="py-2 px-3 font-medium">Kata di judul</th>
+                <th className="py-2 px-3 font-medium text-right">Skor rekom</th>
+                <th className="py-2 pl-3 font-medium">Kesesuaian judul</th>
+              </tr>
+            </thead>
+            <tbody>
+              {a.titleFit.map((f, i) => (
+                <tr key={i} className="border-b border-white/5">
+                  <td className="py-2 pr-3 text-slate-200">{f.combo}</td>
+                  <td className="py-2 px-3">
+                    <span className="inline-flex gap-1 flex-wrap">
+                      <Chip on={f.kaInTitle}>{f.ka}</Chip>
+                      {f.kb && <Chip on={f.kbInTitle}>{f.kb}</Chip>}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-slate-300">{f.recScore}</td>
+                  <td className="py-2 pl-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 rounded-full bg-white/5 w-24 overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${f.titleFitPct}%` }} />
+                      </div>
+                      <span className="tabular-nums text-slate-300 w-10">{f.titleFitPct}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {(() => {
+          const best = [...a.titleFit].sort((x, y) => y.titleFitPct - x.titleFitPct || y.recScore - x.recScore)[0];
+          const noneAligned = a.titleFit.every((f) => f.titleFitPct === 0);
+          return best ? (
+            <div className="mt-3 text-sm bg-violet-500/10 border border-violet-400/20 rounded-xl px-4 py-3">
+              {noneAligned ? (
+                <>Belum ada kombinasi rekomendasi teratas yang katanya muncul di judul. Pertimbangkan menyisipkan salah satu kata kunci menjanjikan (mis. <b>{a.recommendations[0]?.combo}</b>) ke judul agar fokusnya lebih tajam.</>
+              ) : (
+                <>Judul Anda paling selaras dengan <b>{best.combo}</b> ({best.titleFitPct}% kata cocok, skor rekomendasi {best.recScore}).</>
+              )}
+            </div>
+          ) : null;
+        })()}
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -350,4 +425,19 @@ function Card({
 
 function Empty({ text = "Tidak ada data untuk ditampilkan." }: { text?: string }) {
   return <div className="h-40 grid place-items-center text-slate-500 text-sm">{text}</div>;
+}
+
+function Chip({ on, children }: { on: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      className={`text-xs rounded-full px-2 py-0.5 border ${
+        on
+          ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/30"
+          : "bg-white/5 text-slate-400 border-white/10 line-through decoration-slate-600"
+      }`}
+    >
+      {on ? "✓ " : ""}
+      {children}
+    </span>
+  );
 }

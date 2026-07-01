@@ -431,6 +431,81 @@ export function recommendations(records: RisRecord[], keywords: string[]): Recom
   return cands.sort((a, b) => b.score - a.score);
 }
 
+// ---------- Venn: overlapping domains (top 3 keywords) ----------
+export interface VennData {
+  sets: string[]; // [A, B, C]
+  onlyA: number;
+  onlyB: number;
+  onlyC: number;
+  ab: number; // A∩B only (not C)
+  ac: number;
+  bc: number;
+  abc: number;
+  recommendation: string;
+}
+
+export function vennDomains(records: RisRecord[], keywords: string[]): VennData {
+  const counts = keywordCounts(records, keywords).sort((a, b) => b.docFreq - a.docFreq);
+  const sets = counts.slice(0, 3).map((c) => c.keyword);
+  const [A, B, C] = sets;
+  let onlyA = 0, onlyB = 0, onlyC = 0, ab = 0, ac = 0, bc = 0, abc = 0;
+  for (const r of records) {
+    const a = A ? containsTerm(r.searchable, A) : false;
+    const b = B ? containsTerm(r.searchable, B) : false;
+    const c = C ? containsTerm(r.searchable, C) : false;
+    if (a && b && c) abc++;
+    else if (a && b) ab++;
+    else if (a && c) ac++;
+    else if (b && c) bc++;
+    else if (a) onlyA++;
+    else if (b) onlyB++;
+    else if (c) onlyC++;
+  }
+
+  let recommendation: string;
+  if (sets.length < 3) {
+    recommendation = "Butuh minimal 3 domain untuk diagram Venn tiga lingkaran.";
+  } else if (abc === 0) {
+    recommendation = `Belum ada satu pun referensi yang menggabungkan ketiga domain "${A}", "${B}", dan "${C}" sekaligus — inilah celah kebaruan tertinggi. Arahkan penelitian ke irisan ketiganya.`;
+  } else {
+    const pairs = [
+      { name: `${A} ∩ ${B}`, v: ab + abc },
+      { name: `${A} ∩ ${C}`, v: ac + abc },
+      { name: `${B} ∩ ${C}`, v: bc + abc },
+    ].sort((x, y) => x.v - y.v);
+    recommendation = `Ketiga domain sudah pernah digabung (${abc} referensi). Irisan paling tipis: ${pairs[0].name} (${pairs[0].v} referensi) — memperkuat irisan ini paling menjanjikan untuk kontribusi baru.`;
+  }
+  return { sets, onlyA, onlyB, onlyC, ab, ac, bc, abc, recommendation };
+}
+
+// ---------- Title vs recommendation fit ----------
+export interface TitleFit {
+  combo: string;
+  ka: string;
+  kb: string;
+  kaInTitle: boolean;
+  kbInTitle: boolean;
+  recScore: number;
+  titleFitPct: number;
+}
+
+export function titleRecommendationFit(
+  judul: string,
+  recs: Recommendation[],
+  n = 8
+): TitleFit[] {
+  const t = (judul || "").toLowerCase();
+  return recs.slice(0, n).map((r) => {
+    const parts = r.combo.split(" × ");
+    const ka = parts[0]?.trim() || "";
+    const kb = parts[1]?.trim() || "";
+    const kaIn = ka ? containsTerm(t, ka) : false;
+    const kbIn = kb ? containsTerm(t, kb) : false;
+    const fit = (((kaIn ? 1 : 0) + (kbIn ? 1 : 0)) / 2) * 100;
+    return { combo: r.combo, ka, kb, kaInTitle: kaIn, kbInTitle: kbIn, recScore: r.score, titleFitPct: Math.round(fit) };
+  });
+}
+
 // ---------- Top-level orchestrator ----------
 export interface AnalysisResult {
   quality: Quality;
@@ -449,10 +524,13 @@ export interface AnalysisResult {
   opportunity: OpportunityResult;
   novelty: NoveltyResult;
   recommendations: Recommendation[];
+  venn: VennData;
+  titleFit: TitleFit[];
 }
 
-export function runAnalysis(records: RisRecord[], keywords: string[]): AnalysisResult {
+export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""): AnalysisResult {
   const matched = matchedRecords(records, keywords);
+  const recs = recommendations(records, keywords);
   return {
     quality: dataQuality(records),
     keywordCounts: keywordCounts(records, keywords),
@@ -469,6 +547,8 @@ export function runAnalysis(records: RisRecord[], keywords: string[]): AnalysisR
     cooc: cooccurrence(records),
     opportunity: researchOpportunity(records, keywords),
     novelty: noveltyScore(records, keywords),
-    recommendations: recommendations(records, keywords),
+    recommendations: recs,
+    venn: vennDomains(records, keywords),
+    titleFit: titleRecommendationFit(judul, recs),
   };
 }

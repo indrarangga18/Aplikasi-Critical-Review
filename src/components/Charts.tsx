@@ -8,9 +8,12 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 const AXIS = { fontSize: 11, fill: "#94a3b8" };
@@ -219,6 +222,88 @@ export function Heatmap({
         ))}
       </div>
     </div>
+  );
+}
+
+// 3-circle Venn diagram (SVG) for overlapping domains.
+export function Venn({
+  sets,
+  regions,
+}: {
+  sets: string[];
+  regions: { onlyA: number; onlyB: number; onlyC: number; ab: number; ac: number; bc: number; abc: number };
+}) {
+  const [A, B, C] = sets;
+  const r = 78;
+  const cA = { x: 108, y: 100 };
+  const cB = { x: 192, y: 100 };
+  const cC = { x: 150, y: 176 };
+  const label = (x: number, y: number, v: number) => (
+    <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="15" fontWeight="700" fill="#fff">
+      {v}
+    </text>
+  );
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 300 285" className="w-full max-w-[360px]" style={{ mixBlendMode: "normal" }}>
+        <g style={{ mixBlendMode: "screen" }}>
+          <circle cx={cA.x} cy={cA.y} r={r} fill="rgba(129,140,248,.55)" stroke="#a5b4fc" strokeWidth="1.5" />
+          <circle cx={cB.x} cy={cB.y} r={r} fill="rgba(244,114,182,.5)" stroke="#f9a8d4" strokeWidth="1.5" />
+          <circle cx={cC.x} cy={cC.y} r={r} fill="rgba(52,211,153,.45)" stroke="#6ee7b7" strokeWidth="1.5" />
+        </g>
+        {/* region counts */}
+        {label(78, 82, regions.onlyA)}
+        {label(222, 82, regions.onlyB)}
+        {label(150, 216, regions.onlyC)}
+        {label(150, 82, regions.ab)}
+        {label(108, 150, regions.ac)}
+        {label(192, 150, regions.bc)}
+        {label(150, 128, regions.abc)}
+      </svg>
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2 text-xs">
+        <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#818cf8" }} />{A}</span>
+        {B && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#f472b6" }} />{B}</span>}
+        {C && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#34d399" }} />{C}</span>}
+      </div>
+    </div>
+  );
+}
+
+// Scatter: recommendation score (x) vs title fit (y).
+export function FitScatter({
+  data,
+  height = 300,
+}: {
+  data: { combo: string; recScore: number; titleFitPct: number }[];
+  height?: number;
+}) {
+  const t = tooltipStyle();
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ScatterChart margin={{ left: 0, right: 12, top: 12, bottom: 24 }}>
+        <CartesianGrid stroke="rgba(255,255,255,.06)" />
+        <XAxis type="number" dataKey="recScore" name="Skor rekomendasi" tick={AXIS} axisLine={false} tickLine={false} domain={[0, 100]} />
+        <YAxis type="number" dataKey="titleFitPct" name="Kesesuaian judul (%)" tick={AXIS} axisLine={false} tickLine={false} domain={[0, 100]} />
+        <ZAxis range={[120, 120]} />
+        <Tooltip
+          {...t}
+          formatter={(val: number, name: string) => [`${val}${name.includes("Kesesuaian") ? "%" : ""}`, name]}
+          labelFormatter={() => ""}
+          content={({ payload }) => {
+            if (!payload || !payload.length) return null;
+            const p = payload[0].payload as { combo: string; recScore: number; titleFitPct: number };
+            return (
+              <div style={{ background: "rgba(15,23,42,.95)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, color: "#e2e8f0", fontSize: 12, padding: "8px 10px" }}>
+                <div style={{ fontWeight: 600 }}>{p.combo}</div>
+                <div>Skor rekom: {p.recScore}</div>
+                <div>Kesesuaian judul: {p.titleFitPct}%</div>
+              </div>
+            );
+          }}
+        />
+        <Scatter data={data} fill="#c084fc" />
+      </ScatterChart>
+    </ResponsiveContainer>
   );
 }
 

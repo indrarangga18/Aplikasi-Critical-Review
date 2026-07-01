@@ -77,6 +77,30 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   const best = a.recommendations[0];
 
+  const v = a.venn;
+  const [vA, vB, vC] = v.sets;
+  const vennRows = [
+    [`Hanya ${vA}`, v.onlyA],
+    [`Hanya ${vB ?? "—"}`, v.onlyB],
+    [`Hanya ${vC ?? "—"}`, v.onlyC],
+    [`${vA} ∩ ${vB ?? "—"}`, v.ab],
+    [`${vA} ∩ ${vC ?? "—"}`, v.ac],
+    [`${vB ?? "—"} ∩ ${vC ?? "—"}`, v.bc],
+    [`${vA} ∩ ${vB ?? "—"} ∩ ${vC ?? "—"}`, v.abc],
+  ]
+    .map(([lab, n]) => `<tr><td>${esc(String(lab))}</td><td class="num">${n}</td></tr>`)
+    .join("");
+
+  const titleFitRows = a.titleFit
+    .map((f) => {
+      const chip = (on: boolean, w: string) =>
+        `<span style="font-size:11px;border-radius:9px;padding:1px 7px;border:1px solid ${on ? "#86efac" : "#e2e8f0"};color:${on ? "#15803d" : "#94a3b8"};${on ? "" : "text-decoration:line-through;"}">${on ? "✓ " : ""}${esc(w)}</span>`;
+      return `<tr><td>${esc(f.combo)}</td><td>${chip(f.kaInTitle, f.ka)} ${f.kb ? chip(f.kbInTitle, f.kb) : ""}</td><td class="num">${f.recScore}</td><td class="num">${f.titleFitPct}%</td></tr>`;
+    })
+    .join("");
+  const bestFit = [...a.titleFit].sort((x, y) => y.titleFitPct - x.titleFitPct || y.recScore - x.recScore)[0];
+  const noneAligned = a.titleFit.every((f) => f.titleFitPct === 0);
+
   return `<!doctype html>
 <html lang="id">
 <head>
@@ -164,6 +188,28 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <p class="hint">Skor tinggi = pasangan keyword jarang digabung namun sedang naik daun (kandidat celah riset).</p>
     <table><thead><tr><th>Kombinasi</th><th class="num">Co-occurrence</th><th class="num">Emerging</th><th class="num">Skor</th></tr></thead><tbody>${recRows}</tbody></table>
     ${best ? `<div class="warn">Arah paling menjanjikan: <b>${esc(best.combo)}</b> (co-occurrence=${best.cooccurrence}, skor=${best.score}). Validasi dengan membaca paper aktual.</div>` : ""}
+  </section>
+
+  <section>
+    <h2>Domain yang Beririsan (Venn)</h2>
+    <p class="hint">3 domain tersering: ${esc(v.sets.join(", "))}. Jumlah referensi per wilayah irisan.</p>
+    <table><thead><tr><th>Wilayah</th><th class="num">Referensi</th></tr></thead><tbody>${vennRows}</tbody></table>
+    <div class="warn" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">Rekomendasi: ${esc(v.recommendation)}</div>
+  </section>
+
+  <section>
+    <h2>Kesesuaian Judul dengan Rekomendasi</h2>
+    <p class="hint">Seberapa banyak kata dari tiap kombinasi rekomendasi sudah tercermin di judul Anda.</p>
+    <table><thead><tr><th>Kombinasi</th><th>Kata di judul</th><th class="num">Skor rekom</th><th class="num">Kesesuaian</th></tr></thead><tbody>${titleFitRows}</tbody></table>
+    ${
+      bestFit
+        ? `<div class="warn">${
+            noneAligned
+              ? `Belum ada kombinasi teratas yang katanya muncul di judul. Pertimbangkan menyisipkan kata kunci menjanjikan (mis. <b>${esc(best?.combo || "")}</b>) ke judul.`
+              : `Judul paling selaras dengan <b>${esc(bestFit.combo)}</b> (${bestFit.titleFitPct}% kata cocok, skor ${bestFit.recScore}).`
+          }</div>`
+        : ""
+    }
   </section>
 
   <section>
