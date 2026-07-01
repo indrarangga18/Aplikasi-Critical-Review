@@ -25,9 +25,10 @@ File contoh untuk uji coba tersedia di `public/contoh.ris`.
 
 ## Deploy ke Vercel
 
-1. Push folder `ris-analyzer` ini ke sebuah repo GitHub (atau jalankan `vercel` dari CLI).
+1. Push isi folder ini ke sebuah repo GitHub (di repo ini, `package.json` ada di **root**).
 2. Di Vercel, **Import Project** → framework terdeteksi otomatis sebagai **Next.js**.
-   Root Directory = `ris-analyzer` bila repo berisi proyek lain.
+   Biarkan **Root Directory = `./`** (root repo). Jangan diisi `ris-analyzer` — folder itu
+   tidak ada di dalam repo dan akan menyebabkan error 404.
 3. Tambahkan Environment Variables (opsional, untuk fitur email):
    - `RESEND_API_KEY` — dari <https://resend.com/api-keys>
    - `REPORT_FROM_EMAIL` — mis. `onboarding@resend.dev` (uji coba) atau alamat di domain terverifikasi.
