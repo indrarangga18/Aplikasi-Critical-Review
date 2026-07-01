@@ -169,22 +169,37 @@ export function keywordStrength(records: RisRecord[], keywords: string[]): Stren
 }
 
 // ---------- Problem identification (step 7) ----------
+export interface ProblemSentence {
+  title: string;
+  sentence: string;
+  url: string;
+}
+
 export interface ProblemResult {
-  sentences: { title: string; sentence: string }[];
+  sentences: ProblemSentence[];
   cueCounts: CountPair[];
   totalSentences: number;
 }
 
+/** Link to the source paper: DOI when available, else a Google Scholar title search. */
+function paperUrl(row: RisRecord): string {
+  const doi = row.doi.trim();
+  if (doi) return doi.startsWith("http") ? doi : `https://doi.org/${doi}`;
+  if (row.title) return `https://scholar.google.com/scholar?q=${encodeURIComponent(row.title)}`;
+  return "";
+}
+
 export function problemIdentification(matched: RisRecord[]): ProblemResult {
   const cueCounter = new Map<string, number>();
-  const sentences: { title: string; sentence: string }[] = [];
+  const sentences: ProblemSentence[] = [];
   for (const row of matched) {
+    const url = paperUrl(row);
     for (const sent of splitSentences(row.abstract)) {
       const low = sent.toLowerCase();
       const hits = PROBLEM_CUES.filter((c) => low.includes(c));
       if (hits.length) {
         for (const c of hits) cueCounter.set(c, (cueCounter.get(c) || 0) + 1);
-        sentences.push({ title: row.title.slice(0, 55), sentence: sent });
+        sentences.push({ title: row.title.slice(0, 55), sentence: sent, url });
       }
     }
   }

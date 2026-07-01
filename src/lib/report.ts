@@ -59,7 +59,10 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   const problemSentences = a.problem.sentences
     .slice(0, 8)
-    .map((s) => `<li><span class="ptitle">[${esc(s.title)}…]</span> ${esc(s.sentence.slice(0, 220))}</li>`)
+    .map((s) => {
+      const label = `<span class="ptitle">[${esc(s.title)}…]</span> ${esc(s.sentence.slice(0, 220))}`;
+      return `<li>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${label}</a>` : label}</li>`;
+    })
     .join("");
 
   const topAuthors = a.topAuthors
@@ -108,6 +111,9 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   ul { margin:6px 0 0; padding-left:18px; }
   li { margin:6px 0; font-size:13.5px; }
   .ptitle { color:#6366f1; font-weight:600; }
+  section a { color: inherit; text-decoration: none; }
+  section a:hover { text-decoration: underline; }
+  section a:hover .ptitle { text-decoration: underline; }
   .muted { color:#94a3b8; }
   .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
   .warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 14px; font-size:13px; margin-top:12px; }
@@ -174,7 +180,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
         <table><tbody>${cueRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
       </div>
       <div>
-        <h3 style="font-size:14px;margin:0 0 6px;">Contoh kalimat</h3>
+        <h3 style="font-size:14px;margin:0 0 6px;">Contoh kalimat memuat research gap</h3>
         <ul>${problemSentences || "<li class='muted'>Abstrak kosong.</li>"}</ul>
       </div>
     </div>

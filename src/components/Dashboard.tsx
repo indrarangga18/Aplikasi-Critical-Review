@@ -6,6 +6,7 @@ import {
   Award,
   BarChart3,
   Download,
+  ExternalLink,
   Lightbulb,
   Loader2,
   Mail,
@@ -213,11 +214,24 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
       {/* Problem sentences */}
       {a.problem.sentences.length > 0 && (
-        <Card title="Contoh Kalimat Bermuatan Masalah" hint="Baca kalimat asli sebelum menyimpulkan ada gap." className="mb-4">
-          <ul className="space-y-2.5 mt-1">
+        <Card title="Contoh Kalimat Memuat Research Gap" hint="Klik tiap kalimat untuk membuka paper aslinya. Baca sumber asli sebelum menyimpulkan ada gap." className="mb-4">
+          <ul className="space-y-1.5 mt-1">
             {a.problem.sentences.slice(0, 8).map((s, i) => (
-              <li key={i} className="text-sm text-slate-300">
-                <span className="text-violet-300 font-medium">[{s.title}…]</span> {s.sentence.slice(0, 220)}
+              <li key={i}>
+                <a
+                  href={s.url || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`group flex gap-1.5 text-sm rounded-lg px-3 py-2 transition ${
+                    s.url ? "text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer" : "text-slate-300 cursor-default"
+                  }`}
+                >
+                  <span>
+                    <span className="text-violet-300 font-medium group-hover:underline">[{s.title}…]</span>{" "}
+                    {s.sentence.slice(0, 220)}
+                  </span>
+                  {s.url && <ExternalLink className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
+                </a>
               </li>
             ))}
           </ul>
