@@ -362,7 +362,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
       {/* Rare pairs + Problem */}
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Pasangan Keyword Paling Jarang Digabung" hint="Kandidat peluang — 0 bisa berarti belum diteliti ATAU tidak relevan.">
+        <Card title="Pasangan Keyword Paling Jarang Digabung" hint="Padanan EN↔ID sudah diperhitungkan. Nilai 0 = pasangan ini belum pernah muncul bersama di korpus (kandidat celah riset), bukan error.">
           <ul className="space-y-2 mt-1">
             {a.opportunity.rarePairs.map((p, i) => (
               <li key={i} className="flex items-center justify-between text-sm bg-white/5 rounded-lg px-3 py-2">
@@ -427,9 +427,10 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       </div>
 
       <p className="text-slate-500 text-xs text-center max-w-2xl mx-auto pb-10">
-        ⚠️ Seluruh rekomendasi adalah TITIK AWAL, bukan kesimpulan. Analisis memakai pencocokan kata kunci —
-        homonim/sinonim tidak ditangani, dan Novelty Score bukan metrik bibliometrik standar. Validasi dengan
-        membaca paper aktual pada pasangan keyword teratas.
+        ⚠️ Seluruh rekomendasi adalah TITIK AWAL, bukan kesimpulan. Pencocokan sudah memakai glosarium bilingual
+        EN↔ID untuk istilah umum (mis. "artificial intelligence" = "kecerdasan buatan"), tetapi istilah di luar
+        glosarium tetap dicocokkan apa adanya dan homonim tidak dibedakan. Novelty Score bukan metrik bibliometrik
+        standar. Validasi dengan membaca paper aktual pada pasangan keyword teratas.
       </p>
 
       <style jsx global>{`

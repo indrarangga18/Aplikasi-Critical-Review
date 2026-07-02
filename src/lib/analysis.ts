@@ -2,6 +2,7 @@
 // Pure functions — no rendering. Consumed by the dashboard components.
 
 import type { RisRecord } from "./ris";
+import { expandTerm } from "./terms";
 
 // Penanda "masalah/gap" (Inggris + Indonesia). Bukan pemahaman makna, hanya isyarat.
 export const PROBLEM_CUES = [
@@ -23,32 +24,38 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Word-boundary match for single words; substring for phrases (mirrors `contains_term`). */
-export function containsTerm(text: string, term: string): boolean {
-  const t = term.trim().toLowerCase();
+/** Match a single surface form: word-boundary for words, substring for phrases. */
+function matchOne(text: string, t: string): boolean {
   if (!t) return false;
   if (t.includes(" ") || t.includes("-")) return text.includes(t);
   return new RegExp("\\b" + escapeRegExp(t) + "\\b").test(text);
 }
 
-export function totalOccurrences(records: RisRecord[], term: string): number {
-  const t = term.toLowerCase();
+/** Synonym/bilingual-aware match: true if ANY equivalent surface form appears. */
+export function containsTerm(text: string, term: string): boolean {
+  return expandTerm(term).some((v) => matchOne(text, v));
+}
+
+function countOne(text: string, t: string): number {
+  if (!t) return 0;
   if (t.includes(" ") || t.includes("-")) {
     let n = 0;
-    for (const r of records) {
-      let idx = 0;
-      while ((idx = r.searchable.indexOf(t, idx)) !== -1) {
-        n++;
-        idx += t.length;
-      }
+    let idx = 0;
+    while ((idx = text.indexOf(t, idx)) !== -1) {
+      n++;
+      idx += t.length;
     }
     return n;
   }
-  const re = new RegExp("\\b" + escapeRegExp(t) + "\\b", "g");
+  const m = text.match(new RegExp("\\b" + escapeRegExp(t) + "\\b", "g"));
+  return m ? m.length : 0;
+}
+
+export function totalOccurrences(records: RisRecord[], term: string): number {
+  const variants = expandTerm(term);
   let n = 0;
   for (const r of records) {
-    const m = r.searchable.match(re);
-    if (m) n += m.length;
+    for (const v of variants) n += countOne(r.searchable, v);
   }
   return n;
 }
