@@ -419,21 +419,38 @@ export function researchOpportunity(records: RisRecord[], keywords: string[]): O
 }
 
 // ---------- Novelty score (step 10) ----------
-export interface NoveltyComponent {
+export interface NoveltyFactor {
+  key: string;
   name: string;
   measures: string; // apa yang diukur (satu baris)
-  value: number; // 0–1 (nilai ternormalisasi)
+  value: number; // 0–1 ternormalisasi
   weight: number;
   contribution: number; // poin ke skor akhir
   detail: string; // angka mentah di baliknya
-  interpretation: string; // arti nilai ini
+  interpretation: string;
+  direction: "naik" | "turun" | "netral"; // efek ke novelty
+}
+
+export interface NoveltyConfidence {
+  percent: number;
+  level: string; // Tinggi / Sedang / Rendah
+  reasons: string[];
+}
+
+export interface NoveltySensitivity {
+  keyword: string;
+  scoreWithout: number;
+  delta: number; // scoreWithout − skor dasar
 }
 
 export interface NoveltyResult {
   score: number;
   level: string; // Rendah / Sedang / Tinggi
   levelHint: string;
-  components: NoveltyComponent[];
+  factors: NoveltyFactor[]; // 5 kontributor
+  confidence: NoveltyConfidence;
+  sensitivity: NoveltySensitivity[];
+  explanations: string[]; // 3 alasan utama
   nAll: number;
   totalRefs: number;
   totalPairs: number;
@@ -442,29 +459,84 @@ export interface NoveltyResult {
   keywordCount: number;
 }
 
-const W = { rarity: 0.4, pairGap: 0.35, emerging: 0.25 };
+// Bobot 5 kontributor (jumlah = 1).
+const NW = { rare: 0.3, gap: 0.25, emerging: 0.2, interdisciplinary: 0.15, coverage: 0.1 };
 
-export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyResult {
+interface NoveltyCore {
+  score: number;
+  rare: number;
+  gap: number;
+  emerging: number;
+  interdisciplinary: number;
+  coverage: number;
+  nAll: number;
+  total: number;
+  totalPairs: number;
+  zeroPairs: number;
+  emergingMean: number;
+  coverageShare: number;
+  avgJaccard: number;
+}
+
+/** Pure factor + score computation (reused by the main result and sensitivity). */
+function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
   const total = records.length || 1;
   const K = keywords.length;
   const U: number[][] = records.map((r) => keywords.map((kw) => (containsTerm(r.searchable, kw) ? 1 : 0)));
-  const nAll = U.filter((row) => row.reduce((a, b) => a + b, 0) === K).length;
+  const rowSums = U.map((row) => row.reduce((a, b) => a + b, 0));
+  const nAll = rowSums.filter((s) => s === K).length;
+  const refs2plus = rowSums.filter((s) => s >= 2).length;
+
   const matrix = userCoocMatrix(records, keywords);
   const totalPairs = (K * (K - 1)) / 2;
   let zeroPairs = 0;
   for (let a = 0; a < K; a++) for (let b = a + 1; b < K; b++) if (matrix[a][b] === 0) zeroPairs++;
 
-  const rarity = Math.min(Math.max(1 - nAll / total, 0), 1);
-  const pairGap = totalPairs ? zeroPairs / totalPairs : 0;
+  // Interdisciplinarity via document-set overlap (Jaccard) between keywords.
+  const docCount = keywords.map((_, k) => U.reduce((acc, row) => acc + row[k], 0));
+  let jaccSum = 0;
+  let jaccN = 0;
+  for (let a = 0; a < K; a++)
+    for (let b = a + 1; b < K; b++) {
+      const inter = matrix[a][b];
+      const uni = docCount[a] + docCount[b] - inter;
+      if (uni > 0) {
+        jaccSum += inter / uni;
+        jaccN++;
+      }
+    }
+  const avgJaccard = jaccN ? jaccSum / jaccN : 0;
+
+  const rare = Math.min(Math.max(1 - nAll / total, 0), 1);
+  const gap = totalPairs ? zeroPairs / totalPairs : 0;
   const emergingMean = Math.max(
     -1,
     Math.min(1, keywords.reduce((a, k) => a + emergingScore(records, k), 0) / (K || 1))
   );
-  const emergingNorm = (emergingMean + 1) / 2;
+  const emerging = (emergingMean + 1) / 2;
+  const interdisciplinary = Math.min(Math.max(1 - avgJaccard, 0), 1);
+  const coverageShare = refs2plus / total;
+  const coverage = Math.min(Math.max(1 - coverageShare, 0), 1);
 
-  const score = +(100 * (W.rarity * rarity + W.pairGap * pairGap + W.emerging * emergingNorm)).toFixed(1);
+  const score = +(
+    100 *
+    (NW.rare * rare +
+      NW.gap * gap +
+      NW.emerging * emerging +
+      NW.interdisciplinary * interdisciplinary +
+      NW.coverage * coverage)
+  ).toFixed(1);
 
-  const level = score >= 66 ? "Tinggi" : score >= 40 ? "Sedang" : "Rendah";
+  return { score, rare, gap, emerging, interdisciplinary, coverage, nAll, total, totalPairs, zeroPairs, emergingMean, coverageShare, avgJaccard };
+}
+
+export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyResult {
+  const c = noveltyCore(records, keywords);
+  const K = keywords.length;
+  const kwList = keywords.slice(0, 3).join(", ") + (K > 3 ? ", dst" : "");
+  const pct = (x: number) => Math.round(x * 100);
+
+  const level = c.score >= 66 ? "Tinggi" : c.score >= 40 ? "Sedang" : "Rendah";
   const levelHint =
     level === "Tinggi"
       ? "Kombinasi keyword ini relatif jarang & sedang naik daun — indikasi kuat ada ruang kebaruan. Tetap validasi dengan membaca paper."
@@ -472,61 +544,145 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
       ? "Ada sebagian ruang kebaruan, tapi sebagian kombinasi sudah cukup ramai. Pertimbangkan pertajam sudut pandang."
       : "Kombinasi keyword ini sudah banyak diteliti bersama. Untuk kebaruan, coba ganti/tambah keyword yang lebih spesifik atau lintas-bidang.";
 
-  const components: NoveltyComponent[] = [
-    {
-      name: "Kelangkaan kombinasi",
-      measures: "Seberapa sedikit referensi yang memuat SEMUA keyword sekaligus.",
-      value: +rarity.toFixed(3),
-      weight: W.rarity,
-      contribution: +(rarity * W.rarity * 100).toFixed(1),
-      detail: `${nAll} dari ${total} referensi (${(nAll / total * 100).toFixed(1)}%) memuat seluruh ${K} keyword.`,
-      interpretation:
-        rarity >= 0.8
-          ? "Sangat langka → kuat mendukung kebaruan."
-          : rarity >= 0.5
-          ? "Cukup langka → mendukung kebaruan."
-          : "Kombinasi sudah umum → menurunkan kebaruan.",
-    },
-    {
-      name: "Pasangan belum diteliti",
-      measures: "Berapa banyak pasangan keyword yang belum pernah muncul bersama.",
-      value: +pairGap.toFixed(3),
-      weight: W.pairGap,
-      contribution: +(pairGap * W.pairGap * 100).toFixed(1),
-      detail: `${zeroPairs} dari ${totalPairs} pasangan keyword (${(pairGap * 100).toFixed(0)}%) belum pernah digabung di korpus.`,
-      interpretation:
-        pairGap >= 0.6
-          ? "Banyak celah antar-keyword belum dijelajah."
-          : pairGap >= 0.3
-          ? "Ada beberapa celah antar-keyword."
-          : "Sebagian besar pasangan sudah pernah digabung.",
-    },
-    {
-      name: "Tren emerging",
-      measures: "Rata-rata apakah keyword menaik (baru) atau menurun belakangan.",
-      value: +emergingNorm.toFixed(3),
-      weight: W.emerging,
-      contribution: +(emergingNorm * W.emerging * 100).toFixed(1),
-      detail: `Rata-rata Δ proporsi = ${emergingMean >= 0 ? "+" : ""}${emergingMean.toFixed(3)} (periode baru − lama).`,
-      interpretation:
-        emergingMean > 0.05
-          ? "Topik cenderung menaik (emerging)."
-          : emergingMean < -0.05
-          ? "Topik cenderung menurun."
-          : "Topik relatif stabil.",
-    },
+  const mk = (
+    key: string,
+    name: string,
+    measures: string,
+    value: number,
+    weight: number,
+    detail: string,
+    interpretation: string,
+    good: boolean
+  ): NoveltyFactor => ({
+    key,
+    name,
+    measures,
+    value: +value.toFixed(3),
+    weight,
+    contribution: +(value * weight * 100).toFixed(1),
+    detail,
+    interpretation,
+    direction: value >= 0.55 ? (good ? "naik" : "netral") : value <= 0.45 ? "turun" : "netral",
+  });
+
+  const factors: NoveltyFactor[] = [
+    mk("rare", "Keyword Rare", "Seberapa sedikit referensi yang memuat SEMUA keyword sekaligus.", c.rare, NW.rare,
+      `${c.nAll} dari ${c.total} referensi (${(c.nAll / c.total * 100).toFixed(1)}%) memuat seluruh ${K} keyword.`,
+      c.rare >= 0.8 ? "Sangat langka → kuat mendukung kebaruan." : c.rare >= 0.5 ? "Cukup langka → mendukung kebaruan." : "Kombinasi sudah umum → menurunkan kebaruan.",
+      true),
+    mk("gap", "Gap Research", "Berapa banyak pasangan keyword yang belum pernah digabung.", c.gap, NW.gap,
+      `${c.zeroPairs} dari ${c.totalPairs} pasangan keyword (${pct(c.gap)}%) belum pernah muncul bersama.`,
+      c.gap >= 0.6 ? "Banyak celah antar-keyword belum dijelajah." : c.gap >= 0.3 ? "Ada beberapa celah antar-keyword." : "Sebagian besar pasangan sudah pernah digabung.",
+      true),
+    mk("emerging", "Emerging Topic", "Rata-rata apakah keyword menaik (baru) atau menurun belakangan.", c.emerging, NW.emerging,
+      `Rata-rata Δ proporsi = ${c.emergingMean >= 0 ? "+" : ""}${c.emergingMean.toFixed(3)} (periode baru − lama).`,
+      c.emergingMean > 0.05 ? "Topik cenderung menaik (emerging)." : c.emergingMean < -0.05 ? "Topik cenderung menurun." : "Topik relatif stabil.",
+      true),
+    mk("interdisciplinary", "Interdisciplinary", "Seberapa lintas-bidang keyword (tumpang tindih dokumen rendah = beda komunitas).", c.interdisciplinary, NW.interdisciplinary,
+      `Rata-rata tumpang tindih dokumen antar-keyword = ${pct(c.avgJaccard)}%.`,
+      c.interdisciplinary >= 0.7 ? "Keyword lintas-disiplin → berpotensi kombinasi baru." : c.interdisciplinary >= 0.4 ? "Sebagian lintas-bidang." : "Keyword berasal dari area yang mirip.",
+      true),
+    mk("coverage", "Coverage Literatur", "Seberapa jarang literatur membahas ≥2 keyword sekaligus.", c.coverage, NW.coverage,
+      `${pct(c.coverageShare)}% referensi membahas ≥2 keyword sekaligus.`,
+      c.coverage >= 0.7 ? "Kombinasi belum banyak tergarap." : c.coverage >= 0.4 ? "Sebagian sudah tergarap." : "Topik sudah matang (banyak dibahas).",
+      true),
   ];
 
+  // ----- Confidence: seberapa layak skor ini dipercaya (dipengaruhi jumlah data) -----
+  const withAbstract = records.filter((r) => r.abstract.length > 0).length;
+  const years = records.map((r) => r.year).filter((y): y is number => y != null);
+  const yMin = years.length ? Math.min(...years) : null;
+  const yMax = years.length ? Math.max(...years) : null;
+  const span = yMin != null && yMax != null ? yMax - yMin : 0;
+  const kwCovered = keywords.filter((k) => records.some((r) => containsTerm(r.searchable, k))).length;
+
+  const sizeS = Math.min(records.length / 200, 1);
+  const spanS = Math.min(span / 8, 1);
+  const covS = K ? kwCovered / K : 0;
+  const absS = records.length ? withAbstract / records.length : 0;
+  const confPercent = Math.round(100 * (0.35 * sizeS + 0.15 * spanS + 0.3 * covS + 0.2 * absS));
+  const confidence: NoveltyConfidence = {
+    percent: confPercent,
+    level: confPercent >= 80 ? "Tinggi" : confPercent >= 60 ? "Sedang" : "Rendah",
+    reasons: [
+      `${records.length} referensi dianalisis${records.length < 80 ? " (relatif sedikit → skor kurang stabil)" : records.length >= 300 ? " (data memadai)" : ""}.`,
+      yMin != null && yMax != null ? `Rentang tahun ${yMin}–${yMax} (${span} tahun).` : "Data tahun tidak tersedia.",
+      `${kwCovered} dari ${K} keyword benar-benar muncul di korpus.`,
+      `${withAbstract} referensi (${pct(absS)}%) memuat abstrak.`,
+    ],
+  };
+
+  // ----- Sensitivity: efek menghapus tiap keyword terhadap skor -----
+  const sensitivity: NoveltySensitivity[] =
+    K > 2
+      ? keywords
+          .map((k) => {
+            const rest = keywords.filter((x) => x !== k);
+            const sc = noveltyCore(records, rest).score;
+            return { keyword: k, scoreWithout: sc, delta: +(sc - c.score).toFixed(1) };
+          })
+          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      : [];
+
+  // ----- Explainability: 3 alasan utama (paling menentukan skor) -----
+  const neutral = (w: number) => 0.5 * w * 100;
+  const explanations = factors
+    .map((f) => {
+      const pull = f.contribution - neutral(f.weight);
+      let text = "";
+      switch (f.key) {
+        case "rare":
+          text =
+            c.rare >= 0.5
+              ? `Hanya ${c.nAll} dari ${c.total} referensi yang memuat seluruh keyword (${kwList}), jadi kombinasi ini tergolong langka dan menambah kebaruan.`
+              : `Kombinasi keyword (${kwList}) sudah dibahas bersama di ${c.nAll} referensi, sehingga unsur kebaruannya menurun.`;
+          break;
+        case "emerging":
+          text =
+            c.emergingMean > 0.05
+              ? `Minat pada keyword ini cenderung menaik beberapa tahun terakhir (Δ=+${c.emergingMean.toFixed(2)}), menambah potensi kebaruan.`
+              : c.emergingMean < -0.05
+              ? `Topik dengan keyword ini telah banyak dipublikasikan dan minatnya menurun belakangan (Δ=${c.emergingMean.toFixed(2)}), sehingga kebaruannya berkurang.`
+              : `Tren keyword relatif stabil belakangan (Δ≈0), tidak banyak mengubah kebaruan.`;
+          break;
+        case "gap":
+          text =
+            c.gap >= 0.5
+              ? `Masih ada ${c.zeroPairs} dari ${c.totalPairs} pasangan keyword yang belum pernah digabung — ruang kebaruan masih terbuka lebar.`
+              : `Sebagian besar pasangan keyword sudah pernah digabung (${c.totalPairs - c.zeroPairs}/${c.totalPairs}), menandakan area relatif matang.`;
+          break;
+        case "interdisciplinary":
+          text =
+            c.interdisciplinary >= 0.6
+              ? `Keyword Anda jarang muncul di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), menandakan kombinasi lintas-disiplin yang berpotensi baru.`
+              : `Keyword Anda sering muncul bersama di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), jadi kombinasinya kurang lintas-disiplin.`;
+          break;
+        case "coverage":
+          text =
+            c.coverageShare >= 0.5
+              ? `Sebanyak ${pct(c.coverageShare)}% referensi sudah membahas minimal dua keyword sekaligus, menandakan topik cukup matang sehingga kebaruan menurun.`
+              : `Hanya ${pct(c.coverageShare)}% referensi yang membahas ≥2 keyword sekaligus, jadi kombinasi ini belum banyak tergarap.`;
+          break;
+      }
+      return { pull: Math.abs(pull), text };
+    })
+    .sort((a, b) => b.pull - a.pull)
+    .slice(0, 3)
+    .map((x) => x.text);
+
   return {
-    score,
+    score: c.score,
     level,
     levelHint,
-    components,
-    nAll,
-    totalRefs: total,
-    totalPairs,
-    zeroPairs,
-    emergingMean: +emergingMean.toFixed(3),
+    factors,
+    confidence,
+    sensitivity,
+    explanations,
+    nAll: c.nAll,
+    totalRefs: c.total,
+    totalPairs: c.totalPairs,
+    zeroPairs: c.zeroPairs,
+    emergingMean: +c.emergingMean.toFixed(3),
     keywordCount: K,
   };
 }

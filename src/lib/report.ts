@@ -35,16 +35,23 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     )
     .join("");
 
-  const noveltyRows = a.novelty.components
+  const noveltyRows = a.novelty.factors
     .map(
       (c) =>
-        `<tr><td><b>${esc(c.name)}</b><div style="font-size:11px;color:#64748b;">${esc(c.measures)}<br/>${esc(c.detail)} → <span style="color:#6366f1;">${esc(c.interpretation)}</span></div></td><td class="num">${c.value}</td><td class="num">${c.weight}</td><td class="num">${c.contribution}</td></tr>`
+        `<tr><td><b>${esc(c.name)}</b>${c.direction !== "netral" ? ` <span style="font-size:10px;color:${c.direction === "naik" ? "#16a34a" : "#dc2626"};">${c.direction === "naik" ? "↑" : "↓"} novelty</span>` : ""}<div style="font-size:11px;color:#64748b;">${esc(c.measures)}<br/>${esc(c.detail)} → <span style="color:#6366f1;">${esc(c.interpretation)}</span></div></td><td class="num">${c.value}</td><td class="num">${c.weight}</td><td class="num">${c.contribution}</td></tr>`
     )
     .join("");
 
-  const noveltyFormula = a.novelty.components
-    .map((c) => `${c.weight}×${c.value}`)
-    .join(" + ");
+  const noveltyFormula = a.novelty.factors.map((c) => `${c.weight}×${c.value}`).join(" + ");
+
+  const explanationItems = a.novelty.explanations.map((e) => `<li>${esc(e)}</li>`).join("");
+  const confReasons = a.novelty.confidence.reasons.map((r) => `<li>${esc(r)}</li>`).join("");
+  const sensRows = a.novelty.sensitivity
+    .map((s) => {
+      const col = s.delta > 0 ? "#16a34a" : s.delta < 0 ? "#dc2626" : "#64748b";
+      return `<tr><td>${esc(s.keyword)}</td><td class="num">${a.novelty.score} → ${s.scoreWithout}</td><td class="num" style="color:${col};font-weight:600;">${s.delta > 0 ? "+" : ""}${s.delta}</td></tr>`;
+    })
+    .join("");
 
   const recRows = a.recommendations
     .slice(0, 8)
@@ -184,10 +191,32 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   </div>
 
   <section>
-    <h2>Rincian Novelty Score</h2>
+    <h2>Rincian Novelty Score — Kontributor Skor</h2>
     <p class="hint">Rumus: Skor = 100 × (${noveltyFormula}) = <b>${a.novelty.score}</b>. Bobot dipilih manual — untuk membandingkan alternatif keyword, bukan klaim ilmiah baku.</p>
-    <table><thead><tr><th>Komponen &amp; makna</th><th class="num">Nilai 0–1</th><th class="num">Bobot</th><th class="num">Kontribusi</th></tr></thead><tbody>${noveltyRows}</tbody></table>
+    <table><thead><tr><th>Faktor &amp; makna</th><th class="num">Nilai 0–1</th><th class="num">Bobot</th><th class="num">Kontribusi</th></tr></thead><tbody>${noveltyRows}</tbody></table>
   </section>
+
+  <section>
+    <h2>Kenapa Skornya Segini? (Explainability)</h2>
+    <p class="hint">Tiga alasan paling menentukan skor.</p>
+    <ol style="margin:6px 0 0; padding-left:18px;">${explanationItems}</ol>
+  </section>
+
+  <section>
+    <h2>Confidence Score: ${a.novelty.confidence.percent}% (${esc(a.novelty.confidence.level)})</h2>
+    <p class="hint">Seberapa layak skor ini dipercaya — dipengaruhi jumlah &amp; cakupan data. Novelty sangat dipengaruhi jumlah data.</p>
+    <ul>${confReasons}</ul>
+  </section>
+
+  ${
+    a.novelty.sensitivity.length
+      ? `<section>
+    <h2>Sensitivity Analysis</h2>
+    <p class="hint">Perubahan Novelty Score bila satu keyword dihapus. Δ negatif = keyword menambah kebaruan; Δ positif = menekan kebaruan.</p>
+    <table><thead><tr><th>Keyword dihapus</th><th class="num">Skor</th><th class="num">Δ</th></tr></thead><tbody>${sensRows}</tbody></table>
+  </section>`
+      : ""
+  }
 
   <section>
     <h2>Rekomendasi Kombinasi Topik</h2>

@@ -9,11 +9,14 @@ import {
   Combine,
   ExternalLink,
   FileDown,
+  Gauge,
+  Info,
   Lightbulb,
   Loader2,
   Mail,
   Network,
   Pencil,
+  SlidersHorizontal,
   RotateCcw,
   Send,
   Target,
@@ -120,6 +123,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   };
 
   const noveltyColor = a.novelty.score >= 66 ? "#34d399" : a.novelty.score >= 40 ? "#fbbf24" : "#fb7185";
+  const confColor = a.novelty.confidence.percent >= 80 ? "#34d399" : a.novelty.confidence.percent >= 60 ? "#fbbf24" : "#fb7185";
   const recData = a.recommendations.slice(0, 10).map((r) => ({ label: r.combo, value: r.score }));
   const strengthData = a.strength.map((s) => ({ label: s.keyword, docFreq: s.docFreq, totalOcc: s.totalOcc }));
 
@@ -243,12 +247,12 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           <p className="text-xs text-slate-400 mt-2 leading-relaxed">{a.novelty.levelHint}</p>
         </Card>
 
-        <Card className="lg:col-span-2" title="Rincian Novelty Score" icon={<BarChart3 className="w-4 h-4" />} hint="Bobot dipilih manual — alat bandingkan alternatif, bukan metrik baku.">
+        <Card className="lg:col-span-2" title="Kontributor Skor" icon={<BarChart3 className="w-4 h-4" />} hint="5 faktor pembentuk Novelty Score. Bobot dipilih manual — alat bandingkan alternatif, bukan metrik baku.">
           {/* Formula with real numbers plugged in */}
           <div className="text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mb-4 leading-relaxed">
             <span className="text-slate-300 font-medium">Rumus:</span> Skor = 100 × (
-            {a.novelty.components.map((c, i) => (
-              <span key={c.name}>
+            {a.novelty.factors.map((c, i) => (
+              <span key={c.key}>
                 {i > 0 && " + "}
                 <span className="text-violet-300">{c.weight}</span>×{c.value}
               </span>
@@ -257,11 +261,14 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </div>
 
           <div className="space-y-4">
-            {a.novelty.components.map((c) => (
-              <div key={c.name}>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <span className="text-sm text-slate-200 font-medium">{c.name}</span>
-                  <span className="text-xs text-slate-400 shrink-0 ml-2">
+            {a.novelty.factors.map((c) => (
+              <div key={c.key}>
+                <div className="flex justify-between items-baseline mb-0.5 gap-2">
+                  <span className="text-sm text-slate-200 font-medium flex items-center gap-1.5">
+                    {c.name}
+                    <DirTag dir={c.direction} />
+                  </span>
+                  <span className="text-xs text-slate-400 shrink-0">
                     +{c.contribution} poin · bobot {c.weight} · nilai {c.value}
                   </span>
                 </div>
@@ -276,12 +283,64 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               </div>
             ))}
           </div>
-
-          <p className="text-xs text-slate-500 mt-4 pt-3 border-t border-white/10">
-            Nilai tiap komponen dinormalisasi ke 0–1, lalu dikali bobotnya (rarity {a.novelty.components[0].weight}, pair-gap {a.novelty.components[1].weight}, emerging {a.novelty.components[2].weight}) dan dijumlahkan × 100.
-          </p>
         </Card>
       </div>
+
+      {/* Explainability + Confidence */}
+      <div className="grid lg:grid-cols-3 gap-4 mb-4">
+        <Card className="lg:col-span-2" title="Kenapa Skornya Segini? (Explainability)" icon={<Info className="w-4 h-4" />} hint="3 alasan paling menentukan skor, dalam bahasa manusia — lebih berguna daripada sekadar angka.">
+          <ol className="space-y-2.5 mt-1">
+            {a.novelty.explanations.map((e, i) => (
+              <li key={i} className="flex gap-2.5 text-sm text-slate-300 leading-relaxed">
+                <span className="grid place-items-center w-5 h-5 rounded-full bg-violet-500/20 text-violet-200 text-xs font-semibold shrink-0 mt-0.5">{i + 1}</span>
+                <span>{e}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+
+        <Card title="Confidence Score" icon={<Gauge className="w-4 h-4" />} hint="Seberapa layak skor ini dipercaya — dipengaruhi jumlah & cakupan data.">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold" style={{ color: confColor }}>{a.novelty.confidence.percent}%</span>
+            <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ color: confColor, background: `${confColor}1f`, border: `1px solid ${confColor}55` }}>{a.novelty.confidence.level}</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden mt-2">
+            <div className="h-full rounded-full" style={{ width: `${a.novelty.confidence.percent}%`, background: confColor }} />
+          </div>
+          <ul className="mt-3 space-y-1.5 text-xs text-slate-400">
+            {a.novelty.confidence.reasons.map((r, i) => (
+              <li key={i} className="flex gap-1.5"><span className="text-violet-300 shrink-0">•</span> {r}</li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-slate-500 mt-3 pt-2 border-t border-white/10">Novelty sangat dipengaruhi jumlah data — makin banyak & luas referensinya, makin stabil skornya.</p>
+        </Card>
+      </div>
+
+      {/* Sensitivity */}
+      {a.novelty.sensitivity.length > 0 && (
+        <Card title="Sensitivity Analysis" icon={<SlidersHorizontal className="w-4 h-4" />} hint="Perubahan Novelty Score bila satu keyword dihapus. |Δ| besar = keyword itu paling menentukan skor." className="mb-4">
+          <div className="space-y-1.5 mt-1">
+            {a.novelty.sensitivity.map((s) => {
+              const up = s.delta > 0;
+              const flat = s.delta === 0;
+              const col = flat ? "#94a3b8" : up ? "#34d399" : "#fb7185";
+              return (
+                <div key={s.keyword} className="flex items-center gap-3 text-sm bg-white/5 rounded-lg px-3 py-2">
+                  <span className="text-slate-500 text-xs shrink-0">tanpa</span>
+                  <span className="text-slate-200 flex-1 truncate">{s.keyword}</span>
+                  <span className="text-slate-400 tabular-nums text-xs">{a.novelty.score} → {s.scoreWithout}</span>
+                  <span className="tabular-nums font-medium w-14 text-right" style={{ color: col }}>
+                    {up ? "+" : ""}{s.delta}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-500 mt-2.5">
+            Δ negatif = menghapus keyword <b>menurunkan</b> novelty (keyword itu menambah kebaruan). Δ positif = keyword itu justru <b>menekan</b> novelty (umum / sudah matang).
+          </p>
+        </Card>
+      )}
 
       {/* ===== Section 2: Distribusi Keyword ===== */}
       <SectionHeader
@@ -631,6 +690,24 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
         );
       })}
     </div>
+  );
+}
+
+function DirTag({ dir }: { dir: "naik" | "turun" | "netral" }) {
+  if (dir === "netral") return null;
+  const up = dir === "naik";
+  return (
+    <span
+      className="text-[10px] font-medium rounded px-1.5 py-0.5"
+      style={
+        up
+          ? { color: "#6ee7b7", background: "rgba(52,211,153,.12)" }
+          : { color: "#fda4af", background: "rgba(251,113,133,.12)" }
+      }
+      title={up ? "Menambah novelty" : "Menurunkan novelty"}
+    >
+      {up ? "↑ novelty" : "↓ novelty"}
+    </span>
   );
 }
 
