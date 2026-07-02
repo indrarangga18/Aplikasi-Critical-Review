@@ -212,7 +212,12 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <Kpi label="Rentang tahun" value={a.quality.yearMin && a.quality.yearMax ? `${a.quality.yearMin}–${a.quality.yearMax}` : "—"} />
       </div>
 
-      {/* Novelty + components */}
+      {/* ===== Section 1: Rincian Novelty Score ===== */}
+      <SectionHeader
+        n={1}
+        title="Rincian Novelty Score"
+        subtitle="Skor kebaruan dari kombinasi keyword Anda beserta komponen pembentuknya."
+      />
       <div className="grid lg:grid-cols-3 gap-4 mb-4">
         <Card className="flex flex-col items-center justify-center text-center">
           <div
@@ -278,7 +283,128 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
       </div>
 
-      {/* Recommendations */}
+      {/* ===== Section 2: Distribusi Keyword ===== */}
+      <SectionHeader
+        n={2}
+        title="Hasil Analisis Distribusi Keyword"
+        subtitle="Sebaran & kekuatan keyword, tren waktu, penulis produktif, dan sumber/jurnal."
+      />
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Keyword Strength" icon={<BarChart3 className="w-4 h-4" />} hint="Seberapa mapan keyword di korpus. Strength tinggi = topik padat (cenderung kurang novel).">
+          <GroupedBar data={strengthData} height={300} />
+        </Card>
+        <Card title="Sinyal Emerging Keyword" hint="Δ proporsi periode baru − lama. Hijau = menaik belakangan.">
+          <DivergingBar data={a.opportunity.emerging} height={300} />
+        </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Sebaran Keyword dalam Korpus" hint="Jumlah referensi yang memuat tiap keyword.">
+          <HBar data={a.keywordCounts.map((k) => ({ label: k.keyword, value: k.docFreq })).sort((x, y) => y.value - x.value)} height={280} />
+        </Card>
+        <Card title="Tren per Tahun: Korpus vs Relevan" hint="Ungu = seluruh publikasi tiap tahun (seberapa aktif bidangnya). Pink = yang menyinggung keyword Anda. Selisih garis = bagian korpus yang di luar fokus Anda.">
+          {yearTrend.length ? <MultiTrend data={yearTrend} height={280} /> : <Empty />}
+        </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Rasio Relevansi per Tahun (%)" hint="Persentase publikasi tiap tahun yang menyinggung keyword Anda — apakah porsi topik Anda menaik atau menurun di dalam bidang.">
+          {shareTrend.length ? <TrendLine data={shareTrend} height={260} /> : <Empty />}
+        </Card>
+        <Card title="Word Cloud Keyword Korpus" hint={`Ukuran kata ∝ frekuensi. Sumber: ${a.keywordCloud.source}.`}>
+          {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}
+        </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Penulis Paling Produktif" hint="Klik nama penulis untuk melihat daftar paper & jurnalnya.">
+          {a.authorsDetail.length ? <DrillList groups={a.authorsDetail} showSource /> : <Empty />}
+        </Card>
+        <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
+          {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
+        </Card>
+      </div>
+
+      {/* ===== Section 3: Identifikasi Gap ===== */}
+      <SectionHeader
+        n={3}
+        title="Hasil Analisis Identifikasi Gap"
+        subtitle="Celah antar-topik pada korpus dan penanda masalah/gap dari abstrak."
+      />
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Co-occurrence Topik Korpus" icon={<Network className="w-4 h-4" />} hint={`Sumber vocab: ${a.cooc.vocabSource}. Sel gelap = jarang digabung.`}>
+          <Heatmap labels={a.cooc.vocab} matrix={a.cooc.matrix} />
+        </Card>
+        <Card title="Pasangan Keyword Paling Jarang Digabung" hint="Padanan EN↔ID sudah diperhitungkan. Nilai 0 = pasangan ini belum pernah muncul bersama di korpus (kandidat celah riset), bukan error.">
+          <ul className="space-y-2 mt-1">
+            {a.opportunity.rarePairs.map((p, i) => (
+              <li key={i} className="flex items-center justify-between text-sm bg-white/5 rounded-lg px-3 py-2">
+                <span className="text-slate-200">{p.a} <span className="text-slate-500">+</span> {p.b}</span>
+                <span className="text-violet-300 font-medium">{p.count} ref</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Identifikasi Masalah / Gap" icon={<TriangleAlert className="w-4 h-4" />} hint={`${a.problem.totalSentences} kalimat berpenanda (berbasis kata kunci, bukan pemahaman).`}>
+          {a.problem.cueCounts.length ? (
+            <HBar data={a.problem.cueCounts} height={Math.max(160, a.problem.cueCounts.length * 24)} color="#fb7185" />
+          ) : (
+            <Empty text="Tidak ada penanda terdeteksi (kemungkinan abstrak kosong)." />
+          )}
+        </Card>
+        {a.problem.sentences.length > 0 && (
+          <Card title="Contoh Kalimat Memuat Research Gap" hint="Klik tiap kalimat untuk membuka paper aslinya. Baca sumber asli sebelum menyimpulkan ada gap.">
+            <ul className="space-y-1.5 mt-1">
+              {a.problem.sentences.slice(0, 8).map((s, i) => (
+                <li key={i}>
+                  <a
+                    href={s.url || undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group flex gap-1.5 text-sm rounded-lg px-3 py-2 transition ${
+                      s.url ? "text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer" : "text-slate-300 cursor-default"
+                    }`}
+                  >
+                    <span>
+                      <span className="text-violet-300 font-medium group-hover:underline">[{s.title}…]</span>{" "}
+                      {s.sentence.slice(0, 220)}
+                    </span>
+                    {s.url && <ExternalLink className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
+
+      {/* ===== Section 4: Analisis Novelty ===== */}
+      <SectionHeader
+        n={4}
+        title="Hasil Analisis Novelty"
+        subtitle="Irisan domain dan seberapa sering kombinasi keyword Anda sudah muncul bersama."
+      />
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card
+          title="Domain yang Beririsan (Diagram Venn)"
+          icon={<Combine className="w-4 h-4" />}
+          hint={`3 domain paling beririsan: ${a.venn.sets.join(", ")}. Angka = jumlah referensi di tiap wilayah.`}
+        >
+          <Venn sets={a.venn.sets} regions={a.venn} totals={a.venn.totals} />
+          <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
+            <b>Rekomendasi:</b> {a.venn.recommendation}
+          </div>
+        </Card>
+        <Card title="Co-occurrence Keyword Anda" icon={<Network className="w-4 h-4" />} hint="0 = pasangan keyword Anda belum pernah muncul bersama (semakin novel bila digabung).">
+          <Heatmap labels={data.keywords} matrix={a.opportunity.matrix} annotate />
+        </Card>
+      </div>
+
+      {/* ===== Section 5: Rekomendasi Penelitian ===== */}
+      <SectionHeader
+        n={5}
+        title="Hasil Analisis Rekomendasi Penelitian"
+        subtitle="Kombinasi topik yang disarankan dan kesesuaiannya dengan judul Anda."
+      />
       <Card title="Rekomendasi Kombinasi Topik" icon={<Lightbulb className="w-4 h-4" />} hint="Pasangan keyword jarang digabung namun sedang naik daun = kandidat celah riset." className="mb-4">
         <HBar data={recData} height={Math.max(220, recData.length * 46)} color="#c084fc" labelWidth={230} />
         {a.recommendations[0] && (
@@ -287,31 +413,15 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </div>
         )}
       </Card>
-
-      {/* Venn — overlapping domains */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card
-          title="Domain yang Beririsan (Diagram Venn)"
-          icon={<Combine className="w-4 h-4" />}
-          hint={`3 domain tersering: ${a.venn.sets.join(", ")}. Angka = jumlah referensi di tiap wilayah.`}
-        >
-          <Venn sets={a.venn.sets} regions={a.venn} totals={a.venn.totals} />
-          <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
-            <b>Rekomendasi:</b> {a.venn.recommendation}
-          </div>
-        </Card>
-
-        <Card
-          title="Kesesuaian Judul ↔ Rekomendasi"
-          icon={<Target className="w-4 h-4" />}
-          hint="Membandingkan skor rekomendasi vs berapa banyak kata kombinasi yang sudah muncul di judul Anda, per kombinasi."
-        >
-          <FitBars data={a.titleFit.map((f) => ({ label: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={Math.max(240, a.titleFit.length * 46)} />
-        </Card>
-      </div>
-
-      {/* Title fit table */}
-      <Card title="Tabel Kesesuaian Judul dengan Rekomendasi" icon={<Target className="w-4 h-4" />} hint="Cek apakah kata dari tiap kombinasi rekomendasi sudah tercermin di judul penelitian Anda." className="mb-4">
+      <Card
+        title="Kesesuaian Judul ↔ Rekomendasi"
+        icon={<Target className="w-4 h-4" />}
+        hint="Membandingkan skor rekomendasi vs berapa banyak kata kombinasi yang sudah muncul di judul Anda, per kombinasi."
+        className="mb-4"
+      >
+        <FitBars data={a.titleFit.map((f) => ({ label: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={Math.max(240, a.titleFit.length * 46)} />
+      </Card>
+      <Card title="Tabel Kesesuaian Judul dengan Rekomendasi" icon={<Target className="w-4 h-4" />} hint="Cek apakah kata dari tiap kombinasi rekomendasi sudah tercermin di judul penelitian Anda." className="mb-10">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -361,100 +471,6 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         })()}
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Keyword Strength" icon={<BarChart3 className="w-4 h-4" />} hint="Seberapa mapan keyword di korpus. Strength tinggi = topik padat (cenderung kurang novel).">
-          <GroupedBar data={strengthData} height={300} />
-        </Card>
-        <Card title="Sinyal Emerging Keyword" hint="Δ proporsi periode baru − lama. Hijau = menaik belakangan.">
-          <DivergingBar data={a.opportunity.emerging} height={300} />
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Sebaran Keyword dalam Korpus" hint="Jumlah referensi yang memuat tiap keyword.">
-          <HBar data={a.keywordCounts.map((k) => ({ label: k.keyword, value: k.docFreq })).sort((x, y) => y.value - x.value)} height={280} />
-        </Card>
-        <Card title="Tren per Tahun: Korpus vs Relevan" hint="Ungu = seluruh publikasi tiap tahun (seberapa aktif bidangnya). Pink = yang menyinggung keyword Anda. Selisih garis = bagian korpus yang di luar fokus Anda.">
-          {yearTrend.length ? <MultiTrend data={yearTrend} height={280} /> : <Empty />}
-        </Card>
-      </div>
-
-      {/* Co-occurrence heatmaps */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Co-occurrence Keyword Anda" icon={<Network className="w-4 h-4" />} hint="0 = pasangan keyword belum pernah muncul bersama (peluang).">
-          <Heatmap labels={data.keywords} matrix={a.opportunity.matrix} annotate />
-        </Card>
-        <Card title={`Co-occurrence Topik Korpus`} icon={<Network className="w-4 h-4" />} hint={`Sumber vocab: ${a.cooc.vocabSource}.`}>
-          <Heatmap labels={a.cooc.vocab} matrix={a.cooc.matrix} />
-        </Card>
-      </div>
-
-      {/* Rare pairs + Problem */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Pasangan Keyword Paling Jarang Digabung" hint="Padanan EN↔ID sudah diperhitungkan. Nilai 0 = pasangan ini belum pernah muncul bersama di korpus (kandidat celah riset), bukan error.">
-          <ul className="space-y-2 mt-1">
-            {a.opportunity.rarePairs.map((p, i) => (
-              <li key={i} className="flex items-center justify-between text-sm bg-white/5 rounded-lg px-3 py-2">
-                <span className="text-slate-200">{p.a} <span className="text-slate-500">+</span> {p.b}</span>
-                <span className="text-violet-300 font-medium">{p.count} ref</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-        <Card title="Identifikasi Masalah / Gap" icon={<TriangleAlert className="w-4 h-4" />} hint={`${a.problem.totalSentences} kalimat berpenanda (berbasis kata kunci, bukan pemahaman).`}>
-          {a.problem.cueCounts.length ? (
-            <HBar data={a.problem.cueCounts} height={Math.max(160, a.problem.cueCounts.length * 24)} color="#fb7185" />
-          ) : (
-            <Empty text="Tidak ada penanda terdeteksi (kemungkinan abstrak kosong)." />
-          )}
-        </Card>
-      </div>
-
-      {/* Problem sentences */}
-      {a.problem.sentences.length > 0 && (
-        <Card title="Contoh Kalimat Memuat Research Gap" hint="Klik tiap kalimat untuk membuka paper aslinya. Baca sumber asli sebelum menyimpulkan ada gap." className="mb-4">
-          <ul className="space-y-1.5 mt-1">
-            {a.problem.sentences.slice(0, 8).map((s, i) => (
-              <li key={i}>
-                <a
-                  href={s.url || undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`group flex gap-1.5 text-sm rounded-lg px-3 py-2 transition ${
-                    s.url ? "text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer" : "text-slate-300 cursor-default"
-                  }`}
-                >
-                  <span>
-                    <span className="text-violet-300 font-medium group-hover:underline">[{s.title}…]</span>{" "}
-                    {s.sentence.slice(0, 220)}
-                  </span>
-                  {s.url && <ExternalLink className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {/* Bibliometrics */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Rasio Relevansi per Tahun (%)" hint="Persentase publikasi tiap tahun yang menyinggung keyword Anda — apakah porsi topik Anda menaik atau menurun di dalam bidang.">
-          {shareTrend.length ? <TrendLine data={shareTrend} height={260} /> : <Empty />}
-        </Card>
-        <Card title="Word Cloud Keyword Korpus" hint={`Ukuran kata ∝ frekuensi. Sumber: ${a.keywordCloud.source}.`}>
-          {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-4 mb-10">
-        <Card title="Penulis Paling Produktif" hint="Klik nama penulis untuk melihat daftar paper & jurnalnya.">
-          {a.authorsDetail.length ? <DrillList groups={a.authorsDetail} showSource /> : <Empty />}
-        </Card>
-        <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
-          {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
-        </Card>
-      </div>
-
       <p className="text-slate-500 text-xs text-center max-w-2xl mx-auto pb-10">
         ⚠️ Seluruh rekomendasi adalah TITIK AWAL, bukan kesimpulan. Pencocokan sudah memakai glosarium bilingual
         EN↔ID untuk istilah umum (mis. "artificial intelligence" = "kecerdasan buatan"), tetapi istilah di luar
@@ -502,6 +518,23 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
 const editInput =
   "w-full bg-white/5 border border-white/10 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 outline-none rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-slate-500 transition";
+
+function SectionHeader({ n, title, subtitle, icon }: { n: number; title: string; subtitle?: string; icon?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mt-12 mb-5 first:mt-2">
+      <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 text-white text-base font-bold shrink-0 shadow-lg shadow-violet-500/25">
+        {n}
+      </span>
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold text-white leading-tight flex items-center gap-2">
+          {icon}
+          {title}
+        </h2>
+        {subtitle && <p className="text-xs sm:text-sm text-slate-400">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
 
 function Kpi({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
