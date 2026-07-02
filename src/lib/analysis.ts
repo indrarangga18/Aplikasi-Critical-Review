@@ -481,6 +481,9 @@ interface NoveltyCore {
   bestCount: number; // referensi memuat pasangan keyword terkuat
   refs3plus: number; // referensi memuat ≥3 keyword sekaligus
   maxDepth: number; // jumlah keyword terbanyak yang muncul bersama di satu referensi
+  effVenues: number; // jumlah venue/jurnal "efektif" (perplexity) literatur relevan
+  distinctSrc: number; // jumlah jurnal/sumber berbeda
+  interdiscBasis: string; // "sumber" atau "tumpang tindih keyword"
 }
 
 /** Pure factor + score computation (reused by the main result and sensitivity). */
@@ -538,7 +541,40 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
     Math.min(1, keywords.reduce((a, k) => a + emergingScore(records, k), 0) / (K || 1))
   );
   const emerging = (emergingMean + 1) / 2;
-  const interdisciplinary = Math.min(Math.max(1 - avgJaccard, 0), 1);
+
+  // Interdisciplinary: keragaman VENUE (jurnal/sumber) literatur relevan — sinyal
+  // lintas-bidang yang INDEPENDEN dari co-occurrence. Fallback ke tumpang tindih
+  // dokumen antar-keyword bila metadata sumber minim.
+  const srcCounts = new Map<string, number>();
+  let relevantN = 0;
+  let withSrc = 0;
+  for (let i = 0; i < records.length; i++) {
+    if (rowSums[i] < 1) continue;
+    relevantN++;
+    const s = records[i].source.trim();
+    if (s) {
+      withSrc++;
+      srcCounts.set(s, (srcCounts.get(s) || 0) + 1);
+    }
+  }
+  const srcCoverage = relevantN ? withSrc / relevantN : 0;
+  const distinctSrc = srcCounts.size;
+  let effVenues = 0;
+  let interdiscBasis = "sumber";
+  let interdisciplinary: number;
+  if (srcCoverage >= 0.5 && withSrc > 0 && distinctSrc >= 1) {
+    let H = 0;
+    for (const cnt of srcCounts.values()) {
+      const p = cnt / withSrc;
+      H -= p * Math.log(p);
+    }
+    effVenues = Math.exp(H); // venue "efektif" (perplexity)
+    interdisciplinary = Math.min(Math.max((effVenues - 1) / (10 - 1), 0), 1); // ~10 venue = penuh
+  } else {
+    interdisciplinary = Math.min(Math.max(1 - avgJaccard, 0), 1);
+    interdiscBasis = "tumpang tindih keyword";
+  }
+
   const coverageShare = refs2plus / total;
   const coverage = Math.min(Math.max(1 - coverageShare, 0), 1);
 
@@ -555,6 +591,7 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
     score, rare, gap, emerging, interdisciplinary, coverage, nAll, total, totalPairs, zeroPairs,
     emergingMean, coverageShare, avgJaccard,
     bestA, bestB, bestCount: Math.max(bestCount, 0), refs3plus, maxDepth,
+    effVenues, distinctSrc, interdiscBasis,
   };
 }
 
@@ -608,9 +645,11 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
       `Rata-rata Δ proporsi = ${c.emergingMean >= 0 ? "+" : ""}${c.emergingMean.toFixed(3)} (periode baru − lama).`,
       c.emergingMean > 0.05 ? "Topik cenderung menaik (emerging)." : c.emergingMean < -0.05 ? "Topik cenderung menurun." : "Topik relatif stabil.",
       true),
-    mk("interdisciplinary", "Interdisciplinary", "Seberapa lintas-bidang keyword (tumpang tindih dokumen rendah = beda komunitas).", c.interdisciplinary, NW.interdisciplinary,
-      `Rata-rata tumpang tindih dokumen antar-keyword = ${pct(c.avgJaccard)}%.`,
-      c.interdisciplinary >= 0.7 ? "Keyword lintas-disiplin → berpotensi kombinasi baru." : c.interdisciplinary >= 0.4 ? "Sebagian lintas-bidang." : "Keyword berasal dari area yang mirip.",
+    mk("interdisciplinary", "Interdisciplinary", "Seberapa lintas-bidang topik: keragaman jurnal/sumber literatur relevan (independen dari co-occurrence).", c.interdisciplinary, NW.interdisciplinary,
+      c.interdiscBasis === "sumber"
+        ? `Literatur relevan tersebar di ~${c.effVenues.toFixed(1)} venue efektif (dari ${c.distinctSrc} jurnal/sumber berbeda).`
+        : `Metadata sumber minim → dihitung dari tumpang tindih dokumen antar-keyword = ${pct(c.avgJaccard)}%.`,
+      c.interdisciplinary >= 0.66 ? "Tersebar di banyak bidang → berpotensi lintas-disiplin." : c.interdisciplinary >= 0.33 ? "Sebagian lintas-bidang." : "Terkonsentrasi di sedikit bidang.",
       true),
     mk("coverage", "Coverage Literatur", "Seberapa jarang literatur membahas ≥2 keyword sekaligus.", c.coverage, NW.coverage,
       `${pct(c.coverageShare)}% referensi membahas ≥2 keyword sekaligus.`,
@@ -691,10 +730,17 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
               : `Sebagian besar pasangan keyword sudah pernah digabung (${c.totalPairs - c.zeroPairs}/${c.totalPairs}), menandakan area relatif matang.`;
           break;
         case "interdisciplinary":
-          text =
-            c.interdisciplinary >= 0.6
-              ? `Keyword Anda jarang muncul di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), menandakan kombinasi lintas-disiplin yang berpotensi baru.`
-              : `Keyword Anda sering muncul bersama di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), jadi kombinasinya kurang lintas-disiplin.`;
+          if (c.interdiscBasis === "sumber") {
+            text =
+              c.interdisciplinary >= 0.6
+                ? `Literatur relevan tersebar di banyak jurnal/bidang (~${c.effVenues.toFixed(0)} venue efektif dari ${c.distinctSrc} sumber), menandakan topik lintas-disiplin yang berpotensi baru.`
+                : `Literatur relevan terpusat di sedikit jurnal/bidang (~${c.effVenues.toFixed(0)} venue efektif), jadi kurang lintas-disiplin.`;
+          } else {
+            text =
+              c.interdisciplinary >= 0.6
+                ? `Keyword Anda jarang muncul di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), menandakan kombinasi lintas-disiplin yang berpotensi baru.`
+                : `Keyword Anda sering muncul bersama di paper yang sama (tumpang tindih ${pct(c.avgJaccard)}%), jadi kombinasinya kurang lintas-disiplin.`;
+          }
           break;
         case "coverage":
           text =
