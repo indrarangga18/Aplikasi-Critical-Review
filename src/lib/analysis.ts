@@ -627,16 +627,22 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
   const span = yMin != null && yMax != null ? yMax - yMin : 0;
   const kwCovered = keywords.filter((k) => records.some((r) => containsTerm(r.searchable, k))).length;
 
-  const sizeS = Math.min(records.length / 200, 1);
+  // Jumlah data = pendorong utama (novelty sangat dipengaruhi jumlah data).
+  // Dipakai sebagai PENGALI, bukan penjumlah — supaya mutu data (coverage/abstract)
+  // tidak bisa menutupi korpus yang terlalu kecil.
+  const n = records.length;
+  const dataReliability = 1 - Math.exp(-n / 120); // ~0.34 di 50 artikel, ~0.81 di 200, ~0.98 di 450
   const spanS = Math.min(span / 8, 1);
   const covS = K ? kwCovered / K : 0;
-  const absS = records.length ? withAbstract / records.length : 0;
-  const confPercent = Math.round(100 * (0.35 * sizeS + 0.15 * spanS + 0.3 * covS + 0.2 * absS));
+  const absS = n ? withAbstract / n : 0;
+  const qualityAvg = 0.5 * covS + 0.3 * absS + 0.2 * spanS; // mutu data yang tersedia (0–1)
+  const qualityFactor = 0.4 + 0.6 * qualityAvg; // 0.4–1.0: mutu bagus menaikkan, buruk menahan
+  const confPercent = Math.round(100 * dataReliability * qualityFactor);
   const confidence: NoveltyConfidence = {
     percent: confPercent,
     level: confPercent >= 80 ? "Tinggi" : confPercent >= 60 ? "Sedang" : "Rendah",
     reasons: [
-      `${records.length} referensi dianalisis${records.length < 80 ? " (relatif sedikit → skor kurang stabil)" : records.length >= 300 ? " (data memadai)" : ""}.`,
+      `${n} referensi dianalisis${n < 80 ? " → data sedikit, jadi penentu utama & menekan confidence" : n >= 300 ? " (data memadai)" : ""} (bobot jumlah data = ${Math.round(dataReliability * 100)}%).`,
       yMin != null && yMax != null ? `Rentang tahun ${yMin}–${yMax} (${span} tahun).` : "Data tahun tidak tersedia.",
       `${kwCovered} dari ${K} keyword benar-benar muncul di korpus.`,
       `${withAbstract} referensi (${pct(absS)}%) memuat abstrak.`,
