@@ -8,6 +8,11 @@ import {
   Legend,
   Line,
   LineChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -338,6 +343,22 @@ export function FitBars({
         <Bar dataKey="recScore" name="Skor rekomendasi" radius={[0, 5, 5, 0]} fill="#818cf8" />
         <Bar dataKey="titleFitPct" name="Kesesuaian judul (%)" radius={[0, 5, 5, 0]} fill="#f472b6" />
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// Innovation Radar — novelty dimensions on polar axes.
+export function InnovationRadar({ data, height = 300 }: { data: { axis: string; value: number }[]; height?: number }) {
+  const t = tooltipStyle();
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <RadarChart data={data} outerRadius="72%">
+        <PolarGrid stroke="rgba(255,255,255,.12)" />
+        <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#cbd5e1" }} />
+        <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#64748b" }} angle={90} />
+        <Radar dataKey="value" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.35} strokeWidth={2} />
+        <Tooltip {...t} />
+      </RadarChart>
     </ResponsiveContainer>
   );
 }

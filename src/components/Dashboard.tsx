@@ -7,9 +7,11 @@ import {
   BarChart3,
   ChevronDown,
   Combine,
+  CopyCheck,
   ExternalLink,
   FileDown,
   Gauge,
+  Grid3x3,
   Info,
   Layers,
   LayoutGrid,
@@ -20,11 +22,14 @@ import {
   Network,
   Pencil,
   Quote,
+  Radar,
   Scale,
+  ScanSearch,
   SlidersHorizontal,
   RotateCcw,
   Send,
   Share2,
+  Sparkles,
   Star,
   Target,
   Telescope,
@@ -36,7 +41,7 @@ import {
 } from "lucide-react";
 import { runAnalysis, type GroupWithRefs } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, InnovationRadar, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
@@ -565,31 +570,13 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         )}
       </div>
 
-      {/* Gap Classification */}
-      <Card title="Gap Classification" icon={<Layers className="w-4 h-4" />} hint="Jenis gap yang tersirat di abstrak paper relevan (10 kategori). Bintang = severity berdasarkan berapa banyak paper menyinggungnya." className="mb-4">
+      {/* Gap Classification — klik tiap jenis untuk lihat evidence + link */}
+      <Card title="Gap Classification" icon={<Layers className="w-4 h-4" />} hint="Jenis gap yang tersirat di abstrak paper relevan (10 kategori). Bintang = severity (berapa banyak paper). Klik untuk melihat kalimat bukti + link papernya." className="mb-4">
         {a.gaps.classification.length ? (
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-            {a.gaps.classification.map((g) => (
-              <div key={g.key} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                <span className="text-slate-200">{g.name}</span>
-                <span className="flex items-center gap-2 shrink-0">
-                  <Stars n={g.stars} />
-                  <span className="text-xs text-slate-500 tabular-nums w-14 text-right">{g.count} paper</span>
-                </span>
-              </div>
-            ))}
-          </div>
+          <GapClassList items={a.gaps.classification} />
         ) : (
           <Empty text="Tidak ada penanda jenis gap terdeteksi di abstrak relevan." />
         )}
-        {a.gaps.classification[0]?.examples.length ? (
-          <div className="mt-3 text-xs text-slate-400">
-            <span className="text-slate-500">Contoh ({a.gaps.classification[0].name}):</span>{" "}
-            <a href={a.gaps.classification[0].examples[0].url || undefined} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
-              “{a.gaps.classification[0].examples[0].sentence}”
-            </a>
-          </div>
-        ) : null}
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -662,6 +649,87 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           <Heatmap labels={data.keywords} matrix={a.opportunity.matrix} annotate />
         </Card>
       </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        {/* Novelty Dimension */}
+        <Card title="Novelty Dimension" icon={<Sparkles className="w-4 h-4" />} hint="Dari mana potensi kebaruan berasal — dimensi yang paling banyak disinggung bersama bahasa gap di paper relevan.">
+          {a.noveltyExtra.dimensions.length ? (
+            <div className="space-y-2">
+              {a.noveltyExtra.dimensions.map((d) => (
+                <div key={d.key}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="text-slate-200">{d.name}</span>
+                    <span className="text-slate-400 tabular-nums">{d.score} · {d.count} paper</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${d.score}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty text="Belum ada sinyal dimensi novelty (abstrak terbatas)." />
+          )}
+        </Card>
+        {/* Innovation Radar */}
+        <Card title="Innovation Radar" icon={<Radar className="w-4 h-4" />} hint="Visual potensi kebaruan pada 6 poros: Method, Theory, Context, Variable, Technology, Contribution.">
+          <InnovationRadar data={a.noveltyExtra.radar} height={300} />
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        {/* Similarity Against Existing Research */}
+        <Card title="Similarity Against Existing Research" icon={<CopyCheck className="w-4 h-4" />} hint="Kemiripan judul + keyword Anda dengan tiap paper (cosine kata). Waspadai bila ada yang sangat tinggi.">
+          {a.noveltyExtra.similar.length ? (
+            <ul className="space-y-2 mt-1">
+              {a.noveltyExtra.similar.map((s, i) => {
+                const col = s.similarity >= 80 ? "#fb7185" : s.similarity >= 60 ? "#fbbf24" : "#818cf8";
+                return (
+                  <li key={i}>
+                    <a href={s.url || undefined} target="_blank" rel="noopener noreferrer" className="block group">
+                      <div className="flex justify-between text-xs mb-0.5 gap-2">
+                        <span className="text-slate-300 truncate group-hover:text-white">{s.title} {s.year && <span className="text-slate-500">({s.year})</span>}</span>
+                        <span className="tabular-nums font-medium shrink-0" style={{ color: col }}>{s.similarity}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${s.similarity}%`, background: col }} />
+                      </div>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <Empty text="Isi judul penelitian untuk menghitung kemiripan." />
+          )}
+          {a.noveltyExtra.similar[0]?.similarity >= 80 && (
+            <div className="mt-2.5 text-xs bg-rose-500/10 border border-rose-500/25 text-rose-200 rounded-lg px-3 py-2">⚠️ Ada paper yang <b>sangat mirip</b> ({a.noveltyExtra.similar[0].similarity}%) — pertimbangkan mempertajam sudut/judul agar lebih berbeda.</div>
+          )}
+        </Card>
+        {/* White Space Analysis */}
+        <Card title="White Space Analysis" icon={<ScanSearch className="w-4 h-4" />} hint="Area kosong: pasangan keyword yang keduanya ramai diteliti TAPI belum pernah digabung — kandidat kebaruan terkuat.">
+          {a.noveltyExtra.whiteSpace.length ? (
+            <ul className="space-y-1.5 mt-1">
+              {a.noveltyExtra.whiteSpace.map((w, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                  <span className="text-slate-200 truncate">{w.a} <span className="text-slate-500">×</span> {w.b}</span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] text-slate-500 tabular-nums">{w.aFreq}·{w.bFreq} paper</span>
+                    <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-violet-500/20 text-violet-200 border border-violet-400/25">{w.score}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty text="Tidak ada white space (semua pasangan sudah pernah digabung)." />
+          )}
+        </Card>
+      </div>
+
+      {/* Novelty Opportunity Map */}
+      <Card title="Novelty Opportunity Map" icon={<Grid3x3 className="w-4 h-4" />} hint="Peluang kebaruan tiap pasangan keyword (semakin terang = keduanya jarang/belum digabung = peluang tinggi). Kebalikan dari co-occurrence." className="mb-4">
+        <Heatmap labels={a.noveltyExtra.oppLabels} matrix={a.noveltyExtra.oppMatrix} annotate />
+      </Card>
 
       {/* ===== Section 5: Rekomendasi Penelitian ===== */}
       <SectionHeader
@@ -889,6 +957,36 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
                     </a>
                   </li>
                 ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GapClassList({ items }: { items: { key: string; name: string; count: number; stars: number; examples: { title: string; sentence: string; url: string }[] }[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="space-y-1.5">
+      {items.map((g) => {
+        const isOpen = open === g.key;
+        return (
+          <div key={g.key}>
+            <button onClick={() => setOpen(isOpen ? null : g.key)} className="w-full flex items-center justify-between gap-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg px-3 py-2 transition">
+              <span className="flex items-center gap-2 text-slate-200">
+                <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? "rotate-180 text-violet-300" : ""}`} />
+                {g.name}
+              </span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Stars n={g.stars} />
+                <span className="text-xs text-slate-500 tabular-nums w-14 text-right">{g.count} paper</span>
+              </span>
+            </button>
+            {isOpen && (
+              <ul className="mt-1 mb-2 ml-6 pl-3 space-y-1 border-l border-white/10">
+                {g.examples.length ? g.examples.map((e, i) => <EvidenceItem key={i} e={e} />) : <li className="text-xs text-slate-500 py-1">Tidak ada kalimat contoh.</li>}
               </ul>
             )}
           </div>

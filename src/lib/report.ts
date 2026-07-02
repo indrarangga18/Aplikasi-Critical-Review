@@ -102,6 +102,12 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   const recommendationItems = evList(gaps.future.recommendations.items);
   const ctr = gaps.contradiction;
 
+  // Advanced novelty (Section 4)
+  const nx = a.noveltyExtra;
+  const dimRows = nx.dimensions.map((d) => `<tr><td>${esc(d.name)}</td><td class="num">${d.score}</td><td class="num">${d.count}</td></tr>`).join("");
+  const simRows = nx.similar.map((s) => `<tr><td>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>` : esc(s.title)}${s.year ? ` (${s.year})` : ""}</td><td class="num">${s.similarity}%</td></tr>`).join("");
+  const wsRows = nx.whiteSpace.map((w) => `<tr><td>${esc(w.a)} × ${esc(w.b)}</td><td class="num">${w.aFreq}·${w.bFreq}</td><td class="num">${w.score}</td></tr>`).join("");
+
   // Keyword dynamics
   const dyn = a.dynamics;
   const evoFlow = dyn.evolution
@@ -269,6 +275,24 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <p class="hint">3 domain tersering: ${esc(v.sets.join(", "))}. Jumlah referensi per wilayah irisan.</p>
     <table><thead><tr><th>Wilayah</th><th class="num">Referensi</th></tr></thead><tbody>${vennRows}</tbody></table>
     <div class="warn" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">Rekomendasi: ${esc(v.recommendation)}</div>
+  </section>
+
+  <section>
+    <h2>Novelty Dimension &amp; Innovation Radar</h2>
+    <p class="hint">Dari mana potensi kebaruan berasal (0–100).</p>
+    <table><thead><tr><th>Dimensi</th><th class="num">Skor</th><th class="num">Paper</th></tr></thead><tbody>${dimRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+  </section>
+
+  <section>
+    <h2>Similarity Against Existing Research</h2>
+    <p class="hint">Kemiripan judul + keyword Anda dengan paper yang ada.</p>
+    <table><thead><tr><th>Paper</th><th class="num">Kemiripan</th></tr></thead><tbody>${simRows || "<tr><td class='muted'>Isi judul untuk menghitung.</td></tr>"}</tbody></table>
+  </section>
+
+  <section>
+    <h2>White Space Analysis</h2>
+    <p class="hint">Pasangan keyword yang keduanya ramai diteliti tapi belum pernah digabung — kandidat kebaruan.</p>
+    <table><thead><tr><th>Kombinasi</th><th class="num">Paper (a·b)</th><th class="num">Skor</th></tr></thead><tbody>${wsRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
   </section>
 
   <section>

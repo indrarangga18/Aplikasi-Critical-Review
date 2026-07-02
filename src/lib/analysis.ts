@@ -1237,7 +1237,7 @@ const GAP_TYPES: { key: string; name: string; cues: string[] }[] = [
   { key: "dataset", name: "Dataset Gap", cues: ["dataset", "data availability", "lack of data", "benchmark", "data scarcity", "labeled data", "kumpulan data", "ketersediaan data", "kelangkaan data"] },
 ];
 
-const GAP_STATEMENT_CUES = ["future research", "further research", "future work", "future studies", "future study", "should be investigated", "should be explored", "should be studied", "should be addressed", "remains to be", "has not been", "have not been", "not yet been", "warrant further", "call for", "need for further", "needs to be", "penelitian selanjutnya", "penelitian mendatang", "penelitian lanjutan", "perlu diteliti", "belum diteliti", "masih perlu", "perlu dikaji"];
+const GAP_STATEMENT_CUES = ["future research", "further research", "future work", "future studies", "future study", "should be investigated", "should be explored", "should be studied", "should be addressed", "remains to be", "remains unclear", "has not been", "have not been", "not yet been", "warrant further", "call for", "need for further", "needs to be", "lack of", "little is known", "few studies", "limited research", "under-explored", "underexplored", "poorly understood", "there is a gap", "research gap", "penelitian selanjutnya", "penelitian mendatang", "penelitian lanjutan", "perlu diteliti", "belum diteliti", "masih perlu", "perlu dikaji", "kesenjangan", "belum banyak", "masih sedikit", "belum ada"];
 const FUTURE_CUES = ["future research", "future work", "future study", "future studies", "further research", "further study", "future direction", "next step", "penelitian selanjutnya", "penelitian mendatang", "riset masa depan", "studi lanjutan", "arah penelitian"];
 const LIMITATION_CUES = ["limitation", "limited to", "this study is limited", "is limited", "a constraint", "shortcoming", "drawback", "keterbatasan", "batasan penelitian", "kelemahan"];
 const RECOMMENDATION_CUES = ["we recommend", "it is recommended", "recommendation", "we suggest", "it is suggested", "should consider", "practitioners should", "disarankan", "rekomendasi", "sebaiknya", "kami menyarankan"];
@@ -1264,17 +1264,23 @@ function collectByCues(records: RisRecord[], cues: string[], max: number): Evide
 }
 
 export function gapAnalysis(matched: RisRecord[], keywords: string[], topik: string): GapAnalysis {
+  // Severity by ABSOLUTE paper count (blended with share) — avoids everything
+  // hitting ★★★★★ on a tiny corpus and everything low on a huge one.
   const n = matched.length || 1;
-  const classification: GapClass[] = GAP_TYPES.map((g) => {
-    const { count, items } = collectByCues(matched, g.cues, 3);
+  const starOf = (count: number) => {
+    const abs = count >= 15 ? 5 : count >= 8 ? 4 : count >= 4 ? 3 : count >= 2 ? 2 : count >= 1 ? 1 : 0;
     const pct = count / n;
-    const stars = pct >= 0.25 ? 5 : pct >= 0.15 ? 4 : pct >= 0.08 ? 3 : pct >= 0.03 ? 2 : count > 0 ? 1 : 0;
-    return { key: g.key, name: g.name, count, stars, examples: items };
+    const rel = pct >= 0.4 ? 5 : pct >= 0.25 ? 4 : pct >= 0.12 ? 3 : pct >= 0.05 ? 2 : count > 0 ? 1 : 0;
+    return Math.min(abs, rel); // butuh cukup banyak paper DAN porsi berarti
+  };
+  const classification: GapClass[] = GAP_TYPES.map((g) => {
+    const { count, items } = collectByCues(matched, g.cues, 8);
+    return { key: g.key, name: g.name, count, stars: starOf(count), examples: items };
   })
     .filter((g) => g.count > 0)
     .sort((a, b) => b.count - a.count);
 
-  const gapEvidence = collectByCues(matched, GAP_STATEMENT_CUES, 8);
+  const gapEvidence = collectByCues(matched, GAP_STATEMENT_CUES, 15);
   const future: FutureResearch = {
     futureWork: collectByCues(matched, FUTURE_CUES, 6),
     limitations: collectByCues(matched, LIMITATION_CUES, 6),
@@ -1312,6 +1318,140 @@ export function gapAnalysis(matched: RisRecord[], keywords: string[], topik: str
   };
 }
 
+// ---------- Advanced novelty analysis (Section 4) ----------
+export interface NoveltyDimension {
+  key: string;
+  name: string;
+  score: number; // 0–100 (potensi kebaruan di dimensi ini)
+  count: number; // paper yang menyinggung dimensi + bahasa gap
+  examples: GapEvidence[];
+}
+export interface SimilarPaper {
+  title: string;
+  similarity: number; // 0–100
+  url: string;
+  year: number | null;
+}
+export interface WhiteSpacePair {
+  a: string;
+  b: string;
+  aFreq: number;
+  bFreq: number;
+  score: number; // 0–100 (keduanya ramai tapi tak pernah digabung)
+}
+export interface NoveltyExtra {
+  dimensions: NoveltyDimension[];
+  radar: { axis: string; value: number }[];
+  similar: SimilarPaper[];
+  oppLabels: string[];
+  oppMatrix: number[][];
+  whiteSpace: WhiteSpacePair[];
+}
+
+const NOVELTY_DIMS: { key: string; name: string; cues: string[] }[] = [
+  { key: "method", name: "Novelty Method", cues: ["method", "algorithm", "approach", "technique", "model", "framework", "metode", "algoritma", "pendekatan", "teknik"] },
+  { key: "data", name: "Novelty Data", cues: ["dataset", "data", "benchmark", "corpus", "sample data", "kumpulan data", "data baru"] },
+  { key: "context", name: "Novelty Context", cues: ["context", "setting", "domain", "industry", "sector", "konteks", "domain", "sektor", "industri"] },
+  { key: "theory", name: "Novelty Theory", cues: ["theory", "theoretical", "conceptual", "hypothesis", "teori", "teoretis", "konseptual", "hipotesis"] },
+  { key: "variable", name: "Novelty Variable", cues: ["variable", "moderating", "mediating", "factor", "determinant", "predictor", "variabel", "moderasi", "mediasi", "faktor"] },
+  { key: "technology", name: "Novelty Technology", cues: ["technology", "tool", "platform", "system", "artificial intelligence", "teknologi", "sistem", "kecerdasan buatan"] },
+  { key: "population", name: "Novelty Population", cues: ["population", "sample", "participants", "respondents", "cohort", "populasi", "sampel", "responden", "partisipan"] },
+  { key: "integration", name: "Novelty Integration", cues: ["integrat", "combin", "hybrid", "interdisciplinary", "cross-domain", "multi-", "integrasi", "gabungan", "hibrida", "lintas"] },
+];
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !STOPWORDS.has(w) && !ACADEMIC_STOP.has(w) && !/^\d+$/.test(w));
+}
+function tfMap(tokens: string[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const t of tokens) m.set(t, (m.get(t) || 0) + 1);
+  return m;
+}
+function cosineSim(a: Map<string, number>, b: Map<string, number>): number {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (const v of a.values()) na += v * v;
+  for (const v of b.values()) nb += v * v;
+  for (const [k, v] of a) {
+    const w = b.get(k);
+    if (w) dot += v * w;
+  }
+  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}
+
+export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keywords: string[], judul: string): NoveltyExtra {
+  const gapCtx = [...GAP_STATEMENT_CUES, ...LIMITATION_CUES, "gap", "however", "limited", "challenge", "belum", "kurang", "keterbatasan"];
+
+  // a) Novelty Dimensions — dimensi yang paling banyak disinggung bersama bahasa gap.
+  const dimRaw = NOVELTY_DIMS.map((d) => {
+    let count = 0;
+    const examples: GapEvidence[] = [];
+    for (const r of matched) {
+      const low = r.abstract.toLowerCase();
+      if (!low) continue;
+      const hasDim = d.cues.some((c) => low.includes(c));
+      const hasGap = gapCtx.some((c) => low.includes(c));
+      if (hasDim && hasGap) {
+        count++;
+        if (examples.length < 4)
+          for (const s of splitSentences(r.abstract))
+            if (d.cues.some((c) => s.toLowerCase().includes(c))) { examples.push({ title: r.title.slice(0, 60), sentence: s.trim().slice(0, 220), url: paperUrl(r) }); break; }
+      }
+    }
+    const mention = matched.filter((r) => { const l = r.abstract.toLowerCase(); return l && d.cues.some((c) => l.includes(c)); }).length;
+    return { ...d, count, mention, examples };
+  });
+  const rawMax = Math.max(...dimRaw.map((d) => d.count + 0.3 * d.mention), 1);
+  const dimensions: NoveltyDimension[] = dimRaw
+    .map((d) => ({ key: d.key, name: d.name, count: d.count, score: Math.round(((d.count + 0.3 * d.mention) / rawMax) * 100), examples: d.examples }))
+    .sort((a, b) => b.score - a.score);
+
+  // d) Innovation Radar — 6 poros ringkas.
+  const dimByKey = new Map(dimensions.map((d) => [d.key, d]));
+  const radarKeys = ["method", "theory", "context", "variable", "technology", "integration"];
+  const radarLabel: Record<string, string> = { method: "Method", theory: "Theory", context: "Context", variable: "Variable", technology: "Technology", integration: "Contribution" };
+  const radar = radarKeys.map((k) => ({ axis: radarLabel[k], value: dimByKey.get(k)?.score ?? 0 }));
+
+  // b) Similarity Against Existing Research — judul+keyword vs judul tiap paper.
+  const query = tfMap([...tokenize(judul), ...keywords.flatMap((k) => tokenize(k))]);
+  const similar: SimilarPaper[] = query.size
+    ? records
+        .filter((r) => r.title)
+        .map((r) => ({ title: r.title, similarity: Math.round(cosineSim(query, tfMap([...tokenize(r.title), ...r.keywords.flatMap((k) => tokenize(k))])) * 100), url: paperUrl(r), year: r.year }))
+        .filter((s) => s.similarity > 0)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 8)
+    : [];
+
+  // c) Novelty Opportunity Map + e) White Space — dari co-occurrence keyword Anda.
+  const co = userCoocMatrix(records, keywords);
+  const df = keywords.map((k) => records.reduce((a, r) => a + (containsTerm(r.searchable, k) ? 1 : 0), 0));
+  const K = keywords.length;
+  const oppMatrix: number[][] = Array.from({ length: K }, () => new Array(K).fill(0));
+  for (let a = 0; a < K; a++)
+    for (let b = 0; b < K; b++) {
+      if (a === b) continue;
+      const denom = Math.min(df[a], df[b]) || 1;
+      const cond = co[a][b] / denom; // 0..1 seberapa sering digabung
+      oppMatrix[a][b] = df[a] > 0 && df[b] > 0 ? Math.round((1 - Math.min(1, cond)) * 100) : 0;
+    }
+  const whiteSpace: WhiteSpacePair[] = [];
+  for (let a = 0; a < K; a++)
+    for (let b = a + 1; b < K; b++)
+      if (co[a][b] === 0 && df[a] > 0 && df[b] > 0)
+        whiteSpace.push({ a: keywords[a], b: keywords[b], aFreq: df[a], bFreq: df[b], score: 0 });
+  const wsMax = Math.max(...whiteSpace.map((w) => w.aFreq + w.bFreq), 1);
+  whiteSpace.forEach((w) => (w.score = Math.round(((w.aFreq + w.bFreq) / wsMax) * 100)));
+  whiteSpace.sort((a, b) => b.score - a.score);
+
+  return { dimensions, radar, similar, oppLabels: keywords, oppMatrix, whiteSpace: whiteSpace.slice(0, 8) };
+}
+
 // ---------- Top-level orchestrator ----------
 export interface AnalysisResult {
   quality: Quality;
@@ -1336,6 +1476,7 @@ export interface AnalysisResult {
   titleFit: TitleFit[];
   dynamics: KeywordDynamics;
   gaps: GapAnalysis;
+  noveltyExtra: NoveltyExtra;
 }
 
 export function runAnalysis(records: RisRecord[], keywords: string[], judul = "", topik = ""): AnalysisResult {
@@ -1364,5 +1505,6 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     titleFit: titleRecommendationFit(judul, recs),
     dynamics: keywordDynamics(records, keywords),
     gaps: gapAnalysis(matched, keywords, topik),
+    noveltyExtra: noveltyExtra(records, matched, keywords, judul),
   };
 }
