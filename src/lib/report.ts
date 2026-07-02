@@ -279,7 +279,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   <section>
     <h2>Novelty Dimension &amp; Innovation Radar</h2>
-    <p class="hint">Dari mana potensi kebaruan berasal (0–100).</p>
+    <p class="hint">Dari mana potensi kebaruan berasal (0–100). ${esc(nx.radarInsight)}</p>
     <table><thead><tr><th>Dimensi</th><th class="num">Skor</th><th class="num">Paper</th></tr></thead><tbody>${dimRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
   </section>
 
@@ -291,8 +291,9 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   <section>
     <h2>White Space Analysis</h2>
-    <p class="hint">Pasangan keyword yang keduanya ramai diteliti tapi belum pernah digabung — kandidat kebaruan.</p>
-    <table><thead><tr><th>Kombinasi</th><th class="num">Paper (a·b)</th><th class="num">Skor</th></tr></thead><tbody>${wsRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+    <p class="hint">Area kosong: keyword belum tersentuh & pasangan yang keduanya ramai tapi belum digabung.</p>
+    ${nx.untouched.length ? `<p style="font-size:13px;">Keyword belum tersentuh di korpus: <b>${esc(nx.untouched.join(", "))}</b>.</p>` : ""}
+    <table><thead><tr><th>Kombinasi belum digabung</th><th class="num">Paper (a·b)</th><th class="num">Skor</th></tr></thead><tbody>${wsRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
   </section>
 
   <section>

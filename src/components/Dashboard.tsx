@@ -632,84 +632,47 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       <SectionHeader
         n={4}
         title="Hasil Analisis Novelty"
-        subtitle="Irisan domain dan seberapa sering kombinasi keyword Anda sudah muncul bersama."
+        subtitle="Dari mana kebaruan berasal, peluang & area kosong, serta seberapa mirip judul Anda dengan yang sudah ada."
       />
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card
-          title="Domain yang Beririsan (Diagram Venn)"
-          icon={<Combine className="w-4 h-4" />}
-          hint={`3 domain paling beririsan: ${a.venn.sets.join(", ")}. Angka = jumlah referensi di tiap wilayah.`}
-        >
-          <Venn sets={a.venn.sets} regions={a.venn} totals={a.venn.totals} />
-          <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
-            <b>Rekomendasi:</b> {a.venn.recommendation}
-          </div>
-        </Card>
-        <Card title="Co-occurrence Keyword Anda" icon={<Network className="w-4 h-4" />} hint="0 = pasangan keyword Anda belum pernah muncul bersama (semakin novel bila digabung).">
-          <Heatmap labels={data.keywords} matrix={a.opportunity.matrix} annotate />
-        </Card>
-      </div>
 
+      {/* 4.1 Dari mana novelty berasal */}
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        {/* Novelty Dimension */}
-        <Card title="Novelty Dimension" icon={<Sparkles className="w-4 h-4" />} hint="Dari mana potensi kebaruan berasal — dimensi yang paling banyak disinggung bersama bahasa gap di paper relevan.">
-          {a.noveltyExtra.dimensions.length ? (
-            <div className="space-y-2">
-              {a.noveltyExtra.dimensions.map((d) => (
-                <div key={d.key}>
-                  <div className="flex justify-between text-xs mb-0.5">
-                    <span className="text-slate-200">{d.name}</span>
-                    <span className="text-slate-400 tabular-nums">{d.score} · {d.count} paper</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${d.score}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+        <Card title="Novelty Dimension" icon={<Sparkles className="w-4 h-4" />} hint="Dari mana potensi kebaruan berasal (8 dimensi). Klik tiap dimensi untuk lihat kalimat bukti + link papernya.">
+          {a.noveltyExtra.dimensions.some((d) => d.score > 0) ? (
+            <DimensionList items={a.noveltyExtra.dimensions} />
           ) : (
             <Empty text="Belum ada sinyal dimensi novelty (abstrak terbatas)." />
           )}
         </Card>
-        {/* Innovation Radar */}
         <Card title="Innovation Radar" icon={<Radar className="w-4 h-4" />} hint="Visual potensi kebaruan pada 6 poros: Method, Theory, Context, Variable, Technology, Contribution.">
-          <InnovationRadar data={a.noveltyExtra.radar} height={300} />
+          <InnovationRadar data={a.noveltyExtra.radar} height={280} />
+          <div className="mt-2 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+            <b className="text-slate-300">Interpretasi:</b> {a.noveltyExtra.radarInsight}
+          </div>
         </Card>
       </div>
 
+      {/* 4.2 Peluang & area kosong */}
+      <Card title="Novelty Opportunity Map" icon={<Grid3x3 className="w-4 h-4" />} hint="Peluang kebaruan tiap pasangan keyword (terang = keduanya ramai diteliti TAPI jarang digabung = peluang tinggi; gelap = sudah sering digabung / salah satu keyword tak ada di korpus)." className="mb-4">
+        <Heatmap labels={a.noveltyExtra.oppLabels} matrix={a.noveltyExtra.oppMatrix} annotate />
+      </Card>
+
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        {/* Similarity Against Existing Research */}
-        <Card title="Similarity Against Existing Research" icon={<CopyCheck className="w-4 h-4" />} hint="Kemiripan judul + keyword Anda dengan tiap paper (cosine kata). Waspadai bila ada yang sangat tinggi.">
-          {a.noveltyExtra.similar.length ? (
-            <ul className="space-y-2 mt-1">
-              {a.noveltyExtra.similar.map((s, i) => {
-                const col = s.similarity >= 80 ? "#fb7185" : s.similarity >= 60 ? "#fbbf24" : "#818cf8";
-                return (
-                  <li key={i}>
-                    <a href={s.url || undefined} target="_blank" rel="noopener noreferrer" className="block group">
-                      <div className="flex justify-between text-xs mb-0.5 gap-2">
-                        <span className="text-slate-300 truncate group-hover:text-white">{s.title} {s.year && <span className="text-slate-500">({s.year})</span>}</span>
-                        <span className="tabular-nums font-medium shrink-0" style={{ color: col }}>{s.similarity}%</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${s.similarity}%`, background: col }} />
-                      </div>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <Empty text="Isi judul penelitian untuk menghitung kemiripan." />
+        <Card title="White Space Analysis" icon={<ScanSearch className="w-4 h-4" />} hint="Area kosong: keyword yang belum tersentuh & pasangan yang keduanya ramai tapi belum digabung — kandidat kebaruan terkuat.">
+          {a.noveltyExtra.untouched.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-semibold text-slate-300 mb-1.5">Keyword belum tersentuh di korpus</div>
+              <div className="flex flex-wrap gap-1.5">
+                {a.noveltyExtra.untouched.map((k) => (
+                  <span key={k} className="text-xs bg-amber-500/15 text-amber-200 border border-amber-400/25 rounded-full px-2.5 py-0.5">{k}</span>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1.5">Tidak muncul di korpus — bisa berarti benar-benar baru, atau perlu diperiksa relevansinya.</p>
+            </div>
           )}
-          {a.noveltyExtra.similar[0]?.similarity >= 80 && (
-            <div className="mt-2.5 text-xs bg-rose-500/10 border border-rose-500/25 text-rose-200 rounded-lg px-3 py-2">⚠️ Ada paper yang <b>sangat mirip</b> ({a.noveltyExtra.similar[0].similarity}%) — pertimbangkan mempertajam sudut/judul agar lebih berbeda.</div>
-          )}
-        </Card>
-        {/* White Space Analysis */}
-        <Card title="White Space Analysis" icon={<ScanSearch className="w-4 h-4" />} hint="Area kosong: pasangan keyword yang keduanya ramai diteliti TAPI belum pernah digabung — kandidat kebaruan terkuat.">
+          <div className="text-xs font-semibold text-slate-300 mb-1.5">Pasangan belum digabung (keduanya ramai)</div>
           {a.noveltyExtra.whiteSpace.length ? (
-            <ul className="space-y-1.5 mt-1">
+            <ul className="space-y-1.5">
               {a.noveltyExtra.whiteSpace.map((w, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
                   <span className="text-slate-200 truncate">{w.a} <span className="text-slate-500">×</span> {w.b}</span>
@@ -721,15 +684,43 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               ))}
             </ul>
           ) : (
-            <Empty text="Tidak ada white space (semua pasangan sudah pernah digabung)." />
+            <p className="text-xs text-slate-500">{a.noveltyExtra.untouched.length ? "Semua pasangan yang ada datanya sudah pernah digabung." : "Tidak ada white space (semua pasangan sudah digabung)."}</p>
+          )}
+        </Card>
+
+        {/* Co-occurrence context */}
+        <Card title="Co-occurrence Keyword Anda" icon={<Network className="w-4 h-4" />} hint="Berapa paper memuat tiap pasangan keyword Anda bersama (matriks sama dgn Section 1). 0 = belum pernah digabung.">
+          <Heatmap labels={data.keywords} matrix={a.opportunity.matrix} annotate />
+          {a.noveltyExtra.untouched.length > 0 && (
+            <p className="text-[11px] text-slate-500 mt-2">Baris/kolom nol pada <b className="text-amber-300">{a.noveltyExtra.untouched.join(", ")}</b> karena keyword itu tak muncul di korpus.</p>
           )}
         </Card>
       </div>
 
-      {/* Novelty Opportunity Map */}
-      <Card title="Novelty Opportunity Map" icon={<Grid3x3 className="w-4 h-4" />} hint="Peluang kebaruan tiap pasangan keyword (semakin terang = keduanya jarang/belum digabung = peluang tinggi). Kebalikan dari co-occurrence." className="mb-4">
-        <Heatmap labels={a.noveltyExtra.oppLabels} matrix={a.noveltyExtra.oppMatrix} annotate />
-      </Card>
+      {/* 4.3 Domain overlap + similarity */}
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card
+          title="Domain yang Beririsan (Diagram Venn)"
+          icon={<Combine className="w-4 h-4" />}
+          hint={`3 domain paling beririsan yang benar-benar ada di korpus: ${a.venn.sets.join(", ")}. Angka = jumlah referensi tiap wilayah.`}
+        >
+          <Venn sets={a.venn.sets} regions={a.venn} totals={a.venn.totals} />
+          <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
+            <b>Rekomendasi:</b> {a.venn.recommendation}
+          </div>
+        </Card>
+
+        <Card title="Similarity Against Existing Research" icon={<CopyCheck className="w-4 h-4" />} hint="Kemiripan judul + keyword Anda dengan tiap paper (cosine kata). Klik untuk melihat kata pemicu kemiripan + link.">
+          {a.noveltyExtra.similar.length ? (
+            <SimilarList items={a.noveltyExtra.similar} />
+          ) : (
+            <Empty text="Isi judul penelitian untuk menghitung kemiripan." />
+          )}
+          {a.noveltyExtra.similar[0]?.similarity >= 80 && (
+            <div className="mt-2.5 text-xs bg-rose-500/10 border border-rose-500/25 text-rose-200 rounded-lg px-3 py-2">⚠️ Ada paper yang <b>sangat mirip</b> ({a.noveltyExtra.similar[0].similarity}%) — pertimbangkan mempertajam sudut/judul.</div>
+          )}
+        </Card>
+      </div>
 
       {/* ===== Section 5: Rekomendasi Penelitian ===== */}
       <SectionHeader
@@ -993,6 +984,75 @@ function GapClassList({ items }: { items: { key: string; name: string; count: nu
         );
       })}
     </div>
+  );
+}
+
+function DimensionList({ items }: { items: { key: string; name: string; score: number; count: number; examples: { title: string; sentence: string; url: string }[] }[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="space-y-2">
+      {items.map((d) => {
+        const isOpen = open === d.key;
+        const clickable = d.examples.length > 0;
+        return (
+          <div key={d.key}>
+            <button onClick={() => clickable && setOpen(isOpen ? null : d.key)} className={`w-full text-left ${clickable ? "cursor-pointer" : "cursor-default"}`}>
+              <div className="flex justify-between items-center text-xs mb-0.5">
+                <span className="text-slate-200 flex items-center gap-1">
+                  {clickable && <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isOpen ? "rotate-180 text-violet-300" : ""}`} />}
+                  {d.name}
+                </span>
+                <span className="text-slate-400 tabular-nums">{d.score} · {d.count} paper</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden ml-4">
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${d.score}%` }} />
+              </div>
+            </button>
+            {isOpen && (
+              <ul className="mt-1.5 mb-1 ml-6 pl-3 space-y-1 border-l border-white/10">
+                {d.examples.map((e, i) => (
+                  <EvidenceItem key={i} e={e} />
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SimilarList({ items }: { items: { title: string; similarity: number; url: string; year: number | null; shared: string[] }[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <ul className="space-y-2 mt-1">
+      {items.map((s, i) => {
+        const col = s.similarity >= 80 ? "#fb7185" : s.similarity >= 60 ? "#fbbf24" : "#818cf8";
+        const isOpen = open === i;
+        return (
+          <li key={i}>
+            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-left">
+              <div className="flex justify-between text-xs mb-0.5 gap-2 items-center">
+                <span className="text-slate-300 truncate flex items-center gap-1">
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-500 transition-transform ${isOpen ? "rotate-180 text-violet-300" : ""}`} />
+                  {s.title} {s.year && <span className="text-slate-500">({s.year})</span>}
+                </span>
+                <span className="tabular-nums font-medium shrink-0" style={{ color: col }}>{s.similarity}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/5 overflow-hidden ml-4">
+                <div className="h-full rounded-full" style={{ width: `${s.similarity}%`, background: col }} />
+              </div>
+            </button>
+            {isOpen && (
+              <div className="mt-1.5 mb-1 ml-6 pl-3 border-l border-white/10 text-xs text-slate-400">
+                <div className="mb-1">Kata pemicu kemiripan: {s.shared.length ? s.shared.map((w) => <span key={w} className="inline-block bg-white/5 rounded px-1.5 py-0.5 mr-1 mb-1 text-slate-300">{w}</span>) : <span className="text-slate-500">—</span>}</div>
+                {s.url && <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-violet-300 hover:underline inline-flex items-center gap-1">Buka paper <ExternalLink className="w-3 h-3" /></a>}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

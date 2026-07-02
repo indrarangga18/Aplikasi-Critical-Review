@@ -826,8 +826,11 @@ export function vennDomains(records: RisRecord[], keywords: string[]): VennData 
     co: matrix[i].reduce((a, b) => a + b, 0), // total co-occurrence with the others
   }));
   const anyCo = involvement.some((x) => x.co > 0);
-  // Prefer the domains that actually intersect; fall back to raw frequency.
-  const chosen = [...involvement]
+  // Only domains that actually appear (df>0) — avoids empty circles from
+  // keywords absent in the corpus. Prefer those that intersect, then frequency.
+  const present = involvement.filter((x) => x.df > 0);
+  const pool = present.length >= 3 ? present : involvement; // fallback bila <3 yang muncul
+  const chosen = [...pool]
     .sort((a, b) => (anyCo ? b.co - a.co || b.df - a.df : b.df - a.df))
     .slice(0, 3);
   const sets = chosen.map((c) => c.k);
@@ -1331,6 +1334,7 @@ export interface SimilarPaper {
   similarity: number; // 0–100
   url: string;
   year: number | null;
+  shared: string[]; // kata yang membuatnya mirip
 }
 export interface WhiteSpacePair {
   a: string;
@@ -1342,10 +1346,12 @@ export interface WhiteSpacePair {
 export interface NoveltyExtra {
   dimensions: NoveltyDimension[];
   radar: { axis: string; value: number }[];
+  radarInsight: string;
   similar: SimilarPaper[];
   oppLabels: string[];
   oppMatrix: number[][];
   whiteSpace: WhiteSpacePair[];
+  untouched: string[]; // keyword Anda yang tidak muncul di korpus (df=0)
 }
 
 const NOVELTY_DIMS: { key: string; name: string; cues: string[] }[] = [
@@ -1398,7 +1404,7 @@ export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keyword
       const hasGap = gapCtx.some((c) => low.includes(c));
       if (hasDim && hasGap) {
         count++;
-        if (examples.length < 4)
+        if (examples.length < 6)
           for (const s of splitSentences(r.abstract))
             if (d.cues.some((c) => s.toLowerCase().includes(c))) { examples.push({ title: r.title.slice(0, 60), sentence: s.trim().slice(0, 220), url: paperUrl(r) }); break; }
       }
@@ -1411,18 +1417,29 @@ export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keyword
     .map((d) => ({ key: d.key, name: d.name, count: d.count, score: Math.round(((d.count + 0.3 * d.mention) / rawMax) * 100), examples: d.examples }))
     .sort((a, b) => b.score - a.score);
 
-  // d) Innovation Radar — 6 poros ringkas.
+  // d) Innovation Radar — 6 poros ringkas + interpretasi.
   const dimByKey = new Map(dimensions.map((d) => [d.key, d]));
   const radarKeys = ["method", "theory", "context", "variable", "technology", "integration"];
   const radarLabel: Record<string, string> = { method: "Method", theory: "Theory", context: "Context", variable: "Variable", technology: "Technology", integration: "Contribution" };
   const radar = radarKeys.map((k) => ({ axis: radarLabel[k], value: dimByKey.get(k)?.score ?? 0 }));
+  const radarSorted = [...radar].sort((a, b) => b.value - a.value);
+  const radarInsight =
+    radarSorted[0].value === 0
+      ? "Belum ada sinyal dimensi kebaruan yang kuat (abstrak terbatas). Perkaya korpus atau keyword."
+      : `Potensi kebaruan terbesar pada dimensi ${radarSorted[0].axis} (${radarSorted[0].value}/100)${radarSorted[1].value > 0 ? ` lalu ${radarSorted[1].axis} (${radarSorted[1].value})` : ""}. Paling sedikit ruang di ${radarSorted[radarSorted.length - 1].axis} — di situ literatur sudah mapan. Arahkan kontribusi pada dimensi berpoin tinggi.`;
 
   // b) Similarity Against Existing Research — judul+keyword vs judul tiap paper.
-  const query = tfMap([...tokenize(judul), ...keywords.flatMap((k) => tokenize(k))]);
+  const queryTokens = [...tokenize(judul), ...keywords.flatMap((k) => tokenize(k))];
+  const query = tfMap(queryTokens);
+  const querySet = new Set(queryTokens);
   const similar: SimilarPaper[] = query.size
     ? records
         .filter((r) => r.title)
-        .map((r) => ({ title: r.title, similarity: Math.round(cosineSim(query, tfMap([...tokenize(r.title), ...r.keywords.flatMap((k) => tokenize(k))])) * 100), url: paperUrl(r), year: r.year }))
+        .map((r) => {
+          const docTokens = [...tokenize(r.title), ...r.keywords.flatMap((k) => tokenize(k))];
+          const shared = [...new Set(docTokens.filter((t) => querySet.has(t)))].slice(0, 8);
+          return { title: r.title, similarity: Math.round(cosineSim(query, tfMap(docTokens)) * 100), url: paperUrl(r), year: r.year, shared };
+        })
         .filter((s) => s.similarity > 0)
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 8)
@@ -1432,24 +1449,36 @@ export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keyword
   const co = userCoocMatrix(records, keywords);
   const df = keywords.map((k) => records.reduce((a, r) => a + (containsTerm(r.searchable, k) ? 1 : 0), 0));
   const K = keywords.length;
+  const maxDf = Math.max(...df, 1);
+  const untouched = keywords.filter((_, i) => df[i] === 0);
+  // Opportunity di-BOBOT frekuensi: peluang tinggi = jarang digabung DAN kedua
+  // keyword ramai diteliti (bukan sekadar keduanya nol). Membuat warna bervariasi.
   const oppMatrix: number[][] = Array.from({ length: K }, () => new Array(K).fill(0));
   for (let a = 0; a < K; a++)
     for (let b = 0; b < K; b++) {
       if (a === b) continue;
-      const denom = Math.min(df[a], df[b]) || 1;
-      const cond = co[a][b] / denom; // 0..1 seberapa sering digabung
-      oppMatrix[a][b] = df[a] > 0 && df[b] > 0 ? Math.round((1 - Math.min(1, cond)) * 100) : 0;
+      if (df[a] === 0 || df[b] === 0) { oppMatrix[a][b] = 0; continue; }
+      const cond = co[a][b] / (Math.min(df[a], df[b]) || 1); // 0..1 seberapa sering digabung
+      const strength = Math.sqrt(df[a] * df[b]) / maxDf; // seberapa "berbobot" pasangannya
+      oppMatrix[a][b] = Math.round((1 - Math.min(1, cond)) * strength * 100);
     }
+  // White space: pasangan yang keduanya muncul tapi TAK pernah digabung (co=0),
+  // ATAU co sangat rendah dibanding perkiraan; diurutkan dari yang paling ramai.
   const whiteSpace: WhiteSpacePair[] = [];
   for (let a = 0; a < K; a++)
-    for (let b = a + 1; b < K; b++)
-      if (co[a][b] === 0 && df[a] > 0 && df[b] > 0)
-        whiteSpace.push({ a: keywords[a], b: keywords[b], aFreq: df[a], bFreq: df[b], score: 0 });
-  const wsMax = Math.max(...whiteSpace.map((w) => w.aFreq + w.bFreq), 1);
-  whiteSpace.forEach((w) => (w.score = Math.round(((w.aFreq + w.bFreq) / wsMax) * 100)));
+    for (let b = a + 1; b < K; b++) {
+      if (df[a] === 0 || df[b] === 0) continue;
+      const expected = (df[a] * df[b]) / (records.length || 1);
+      if (co[a][b] === 0 || co[a][b] < expected * 0.5) {
+        const wsScore = Math.min(df[a], df[b]) * (1 - co[a][b] / (expected || 1));
+        whiteSpace.push({ a: keywords[a], b: keywords[b], aFreq: df[a], bFreq: df[b], score: Math.max(0, wsScore) });
+      }
+    }
+  const wsMax = Math.max(...whiteSpace.map((w) => w.score), 1);
+  whiteSpace.forEach((w) => (w.score = Math.round((w.score / wsMax) * 100)));
   whiteSpace.sort((a, b) => b.score - a.score);
 
-  return { dimensions, radar, similar, oppLabels: keywords, oppMatrix, whiteSpace: whiteSpace.slice(0, 8) };
+  return { dimensions, radar, radarInsight, similar, oppLabels: keywords, oppMatrix, whiteSpace: whiteSpace.slice(0, 8), untouched };
 }
 
 // ---------- Top-level orchestrator ----------
