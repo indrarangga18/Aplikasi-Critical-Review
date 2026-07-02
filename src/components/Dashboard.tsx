@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   Award,
   BarChart3,
+  ChevronDown,
   Combine,
   ExternalLink,
   FileDown,
@@ -19,7 +20,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { runAnalysis } from "@/lib/analysis";
+import { runAnalysis, type GroupWithRefs } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
 import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, MultiTrend, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
@@ -417,11 +418,11 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-10">
-        <Card title="Penulis Paling Produktif">
-          {a.topAuthors.length ? <HBar data={a.topAuthors.slice(0, 12)} height={320} color="#a78bfa" /> : <Empty />}
+        <Card title="Penulis Paling Produktif" hint="Klik nama penulis untuk melihat daftar paper & jurnalnya.">
+          {a.authorsDetail.length ? <DrillList groups={a.authorsDetail} showSource /> : <Empty />}
         </Card>
-        <Card title="Sumber / Jurnal Teratas">
-          {a.topSources.length ? <HBar data={a.topSources.slice(0, 12)} height={320} color="#f472b6" /> : <Empty />}
+        <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
+          {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
         </Card>
       </div>
 
@@ -518,6 +519,56 @@ function Card({
 
 function Empty({ text = "Tidak ada data untuk ditampilkan." }: { text?: string }) {
   return <div className="h-40 grid place-items-center text-slate-500 text-sm">{text}</div>;
+}
+
+// Clickable ranked list; each row expands to show its references.
+function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; showSource?: boolean }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const max = Math.max(...groups.map((g) => g.count), 1);
+  return (
+    <div className="space-y-1">
+      {groups.map((g, i) => {
+        const isOpen = open === i;
+        return (
+          <div key={i} className="rounded-lg">
+            <button
+              onClick={() => setOpen(isOpen ? null : i)}
+              className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition"
+            >
+              <div className="flex items-center gap-2">
+                <ChevronDown className={`w-4 h-4 shrink-0 text-slate-500 transition-transform ${isOpen ? "rotate-180 text-violet-300" : ""}`} />
+                <span className="text-sm text-slate-200 flex-1 break-words">{g.name}</span>
+                <span className="text-xs text-slate-400 shrink-0">{g.count} paper</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/5 mt-1.5 ml-6 overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${(g.count / max) * 100}%` }} />
+              </div>
+            </button>
+            {isOpen && (
+              <ul className="mt-1 mb-2 ml-6 pl-3 space-y-1.5 border-l border-white/10">
+                {g.refs.map((ref, j) => (
+                  <li key={j}>
+                    <a
+                      href={ref.url || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`group flex gap-1.5 text-xs leading-relaxed ${ref.url ? "text-slate-300 hover:text-white cursor-pointer" : "text-slate-300"}`}
+                    >
+                      <span>
+                        <span className="text-violet-300 tabular-nums">{ref.year ?? "—"}</span> · {ref.title}
+                        {showSource && ref.source && <span className="text-slate-500"> — {ref.source}</span>}
+                      </span>
+                      {ref.url && <ExternalLink className="w-3 h-3 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function Chip({ on, children }: { on: boolean; children: React.ReactNode }) {

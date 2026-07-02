@@ -141,6 +141,53 @@ export function topSources(records: RisRecord[], n = 15): CountPair[] {
   return mostCommon(counter(srcs), n).map(([label, value]) => ({ label, value }));
 }
 
+export interface RefLink {
+  title: string;
+  year: number | null;
+  url: string;
+  source: string;
+}
+
+export interface GroupWithRefs {
+  name: string;
+  count: number;
+  refs: RefLink[];
+}
+
+/** Group references by author, each with its list of papers (for drill-down). */
+export function authorsWithRefs(records: RisRecord[], n = 12): GroupWithRefs[] {
+  const map = new Map<string, RefLink[]>();
+  for (const r of records) {
+    const link: RefLink = { title: r.title || "(tanpa judul)", year: r.year, url: paperUrl(r), source: r.source };
+    for (const au of r.authors) {
+      const name = au.trim();
+      if (!name) continue;
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(link);
+    }
+  }
+  return [...map.entries()]
+    .map(([name, refs]) => ({ name, count: refs.length, refs }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, n);
+}
+
+/** Group references by source/journal, each with its list of papers. */
+export function sourcesWithRefs(records: RisRecord[], n = 12): GroupWithRefs[] {
+  const map = new Map<string, RefLink[]>();
+  for (const r of records) {
+    const src = r.source.trim();
+    if (!src) continue;
+    const link: RefLink = { title: r.title || "(tanpa judul)", year: r.year, url: paperUrl(r), source: src };
+    if (!map.has(src)) map.set(src, []);
+    map.get(src)!.push(link);
+  }
+  return [...map.entries()]
+    .map(([name, refs]) => ({ name, count: refs.length, refs }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, n);
+}
+
 export function topCorpusKeywords(records: RisRecord[], n = 20): CountPair[] {
   const all = records.flatMap((r) => r.keywords);
   return mostCommon(counter(all), n).map(([label, value]) => ({ label, value }));
@@ -529,6 +576,8 @@ export interface AnalysisResult {
   publicationsPerYear: CountPair[];
   topAuthors: CountPair[];
   topSources: CountPair[];
+  authorsDetail: GroupWithRefs[];
+  sourcesDetail: GroupWithRefs[];
   topCorpusKeywords: CountPair[];
   keywordCloud: CloudResult;
   strength: StrengthRow[];
@@ -553,6 +602,8 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     publicationsPerYear: publicationsPerYear(records),
     topAuthors: topAuthors(records),
     topSources: topSources(records),
+    authorsDetail: authorsWithRefs(records),
+    sourcesDetail: sourcesWithRefs(records),
     topCorpusKeywords: topCorpusKeywords(records),
     keywordCloud: keywordCloud(records),
     strength: keywordStrength(records, keywords),
