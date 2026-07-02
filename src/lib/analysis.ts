@@ -476,6 +476,11 @@ interface NoveltyCore {
   emergingMean: number;
   coverageShare: number;
   avgJaccard: number;
+  bestA: string;
+  bestB: string;
+  bestCount: number; // referensi memuat pasangan keyword terkuat
+  refs3plus: number; // referensi memuat ≥3 keyword sekaligus
+  maxDepth: number; // jumlah keyword terbanyak yang muncul bersama di satu referensi
 }
 
 /** Pure factor + score computation (reused by the main result and sensitivity). */
@@ -486,6 +491,8 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
   const rowSums = U.map((row) => row.reduce((a, b) => a + b, 0));
   const nAll = rowSums.filter((s) => s === K).length;
   const refs2plus = rowSums.filter((s) => s >= 2).length;
+  const refs3plus = rowSums.filter((s) => s >= 3).length;
+  const maxDepth = rowSums.length ? Math.max(...rowSums) : 0;
 
   const matrix = userCoocMatrix(records, keywords);
   const totalPairs = (K * (K - 1)) / 2;
@@ -496,6 +503,13 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
   const docCount = keywords.map((_, k) => U.reduce((acc, row) => acc + row[k], 0));
   let jaccSum = 0;
   let jaccN = 0;
+  // Rarity via lift: are keyword PAIRS combined less often than random chance predicts?
+  // (Using pairs/subsets — not requiring all keywords in one paper, which is ~always 0.)
+  let liftSum = 0;
+  let liftN = 0;
+  let bestA = "";
+  let bestB = "";
+  let bestCount = -1;
   for (let a = 0; a < K; a++)
     for (let b = a + 1; b < K; b++) {
       const inter = matrix[a][b];
@@ -504,10 +518,21 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
         jaccSum += inter / uni;
         jaccN++;
       }
+      const expected = (docCount[a] * docCount[b]) / total; // co-occurrence bila independen
+      if (expected > 0) {
+        liftSum += Math.min(1, inter / expected);
+        liftN++;
+      }
+      if (inter > bestCount) {
+        bestCount = inter;
+        bestA = keywords[a];
+        bestB = keywords[b];
+      }
     }
   const avgJaccard = jaccN ? jaccSum / jaccN : 0;
+  const avgLift = liftN ? liftSum / liftN : 0;
 
-  const rare = Math.min(Math.max(1 - nAll / total, 0), 1);
+  const rare = Math.min(Math.max(1 - avgLift, 0), 1);
   const gap = totalPairs ? zeroPairs / totalPairs : 0;
   const emergingMean = Math.max(
     -1,
@@ -527,7 +552,11 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
       NW.coverage * coverage)
   ).toFixed(1);
 
-  return { score, rare, gap, emerging, interdisciplinary, coverage, nAll, total, totalPairs, zeroPairs, emergingMean, coverageShare, avgJaccard };
+  return {
+    score, rare, gap, emerging, interdisciplinary, coverage, nAll, total, totalPairs, zeroPairs,
+    emergingMean, coverageShare, avgJaccard,
+    bestA, bestB, bestCount: Math.max(bestCount, 0), refs3plus, maxDepth,
+  };
 }
 
 export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyResult {
@@ -566,9 +595,11 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
   });
 
   const factors: NoveltyFactor[] = [
-    mk("rare", "Keyword Rare", "Seberapa sedikit referensi yang memuat SEMUA keyword sekaligus.", c.rare, NW.rare,
-      `${c.nAll} dari ${c.total} referensi (${(c.nAll / c.total * 100).toFixed(1)}%) memuat seluruh ${K} keyword.`,
-      c.rare >= 0.8 ? "Sangat langka → kuat mendukung kebaruan." : c.rare >= 0.5 ? "Cukup langka → mendukung kebaruan." : "Kombinasi sudah umum → menurunkan kebaruan.",
+    mk("rare", "Keyword Rare", "Seberapa jarang keyword DIKOMBINASIKAN dibanding perkiraan acak (berbasis pasangan, bukan harus semua keyword sekaligus).", c.rare, NW.rare,
+      c.bestCount > 0
+        ? `Kombinasi terkuat: "${c.bestA}" + "${c.bestB}" (${c.bestCount} ref). ${c.refs3plus} referensi memuat ≥3 keyword; kedalaman maks ${c.maxDepth} keyword.`
+        : `Tidak ada satu pun pasangan keyword yang pernah muncul bersama di korpus.`,
+      c.rare >= 0.8 ? "Kombinasi jauh lebih jarang dari perkiraan → kuat mendukung kebaruan." : c.rare >= 0.5 ? "Kombinasi lebih jarang dari perkiraan → mendukung kebaruan." : "Kombinasi sudah cukup sering digabung → menurunkan kebaruan.",
       true),
     mk("gap", "Gap Research", "Berapa banyak pasangan keyword yang belum pernah digabung.", c.gap, NW.gap,
       `${c.zeroPairs} dari ${c.totalPairs} pasangan keyword (${pct(c.gap)}%) belum pernah muncul bersama.`,
@@ -632,10 +663,13 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
       let text = "";
       switch (f.key) {
         case "rare":
-          text =
-            c.rare >= 0.5
-              ? `Hanya ${c.nAll} dari ${c.total} referensi yang memuat seluruh keyword (${kwList}), jadi kombinasi ini tergolong langka dan menambah kebaruan.`
-              : `Kombinasi keyword (${kwList}) sudah dibahas bersama di ${c.nAll} referensi, sehingga unsur kebaruannya menurun.`;
+          if (c.bestCount <= 0) {
+            text = `Tidak ada satu pun pasangan keyword (mis. "${keywords[0]}" + "${keywords[1] ?? ""}") yang pernah dibahas bersama di korpus — kombinasi apa pun akan sangat baru, tetapi cek juga apakah keyword-nya memang relevan satu sama lain.`;
+          } else if (c.rare >= 0.5) {
+            text = `Keyword Anda jarang dikombinasikan: pasangan terkuat pun hanya "${c.bestA}" + "${c.bestB}" (${c.bestCount} referensi)${c.refs3plus === 0 ? `, dan tidak ada referensi yang menggabungkan tiga keyword atau lebih` : `, dengan hanya ${c.refs3plus} referensi memuat ≥3 keyword`} — masih banyak ruang kebaruan pada kombinasi yang lebih dalam.`;
+          } else {
+            text = `Beberapa kombinasi keyword sudah cukup banyak dibahas (mis. "${c.bestA}" + "${c.bestB}" di ${c.bestCount} referensi${c.refs3plus > 0 ? `, dan ${c.refs3plus} referensi bahkan memuat ≥3 keyword` : ""}), sehingga sebagian arah penelitian ini kurang baru.`;
+          }
           break;
         case "emerging":
           text =
