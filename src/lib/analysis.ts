@@ -2,7 +2,7 @@
 // Pure functions — no rendering. Consumed by the dashboard components.
 
 import type { RisRecord } from "./ris";
-import { expandTerm } from "./terms";
+import { canonLabel, canonicalizeText, expandTerm } from "./terms";
 
 // Penanda "masalah/gap" (Inggris + Indonesia). Bukan pemahaman makna, hanya isyarat.
 export const PROBLEM_CUES = [
@@ -1428,16 +1428,18 @@ export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keyword
       ? "Belum ada sinyal dimensi kebaruan yang kuat (abstrak terbatas). Perkaya korpus atau keyword."
       : `Potensi kebaruan terbesar pada dimensi ${radarSorted[0].axis} (${radarSorted[0].value}/100)${radarSorted[1].value > 0 ? ` lalu ${radarSorted[1].axis} (${radarSorted[1].value})` : ""}. Paling sedikit ruang di ${radarSorted[radarSorted.length - 1].axis} — di situ literatur sudah mapan. Arahkan kontribusi pada dimensi berpoin tinggi.`;
 
-  // b) Similarity Against Existing Research — judul+keyword vs judul tiap paper.
-  const queryTokens = [...tokenize(judul), ...keywords.flatMap((k) => tokenize(k))];
+  // b) Similarity Against Existing Research — bilingual: teks dikanonikalisasi
+  //    (EN↔ID) dulu agar judul ID cocok dengan korpus EN dan sebaliknya.
+  const canonTokens = (s: string) => tokenize(canonicalizeText(s));
+  const queryTokens = [...canonTokens(judul), ...keywords.flatMap((k) => canonTokens(k))];
   const query = tfMap(queryTokens);
   const querySet = new Set(queryTokens);
   const similar: SimilarPaper[] = query.size
     ? records
         .filter((r) => r.title)
         .map((r) => {
-          const docTokens = [...tokenize(r.title), ...r.keywords.flatMap((k) => tokenize(k))];
-          const shared = [...new Set(docTokens.filter((t) => querySet.has(t)))].slice(0, 8);
+          const docTokens = [...canonTokens(r.title), ...r.keywords.flatMap((k) => canonTokens(k))];
+          const shared = [...new Set(docTokens.filter((t) => querySet.has(t)))].slice(0, 8).map(canonLabel);
           return { title: r.title, similarity: Math.round(cosineSim(query, tfMap(docTokens)) * 100), url: paperUrl(r), year: r.year, shared };
         })
         .filter((s) => s.similarity > 0)

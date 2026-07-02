@@ -94,3 +94,38 @@ export function expandTerm(term: string): string[] {
 export function hasSynonyms(term: string): boolean {
   return expandTerm(term).length > 1;
 }
+
+// --- Canonicalisation (for bilingual-aware token similarity) ---
+// Map every surface form to a single canonical alphanumeric token (English
+// head of its group, spaces removed) so that e.g. "kecerdasan buatan", "ai",
+// and "artificial intelligence" all become "artificialintelligence".
+function escRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+const CANON_PAIRS: [string, string][] = [];
+const CANON_LABEL = new Map<string, string>();
+for (const group of SYNONYM_GROUPS) {
+  const canon = group[0].replace(/[^a-z0-9]/gi, "").toLowerCase();
+  CANON_LABEL.set(canon, group[0]);
+  for (const form of group) CANON_PAIRS.push([form.toLowerCase(), canon]);
+}
+CANON_PAIRS.sort((a, b) => b[0].length - a[0].length); // longest surface form first
+
+/** Replace known surface forms with their canonical token (bilingual-normalised). */
+export function canonicalizeText(text: string): string {
+  let s = " " + text.toLowerCase() + " ";
+  for (const [form, canon] of CANON_PAIRS) {
+    const re = new RegExp("([^a-z0-9])" + escRe(form) + "([^a-z0-9])", "g");
+    let prev: string;
+    do {
+      prev = s;
+      s = s.replace(re, (_m, p1, p2) => p1 + canon + p2);
+    } while (s !== prev);
+  }
+  return s.trim();
+}
+
+/** Human-readable label for a (possibly canonical) token. */
+export function canonLabel(token: string): string {
+  return CANON_LABEL.get(token) || token;
+}
