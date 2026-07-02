@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { runAnalysis } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, TrendLine, Venn, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, MultiTrend, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
@@ -39,6 +39,19 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const a = useMemo(() => runAnalysis(data.records, keywords, judul), [data.records, keywords, judul]);
+
+  // Merge corpus-total and keyword-relevant counts per year for comparison.
+  const yearTrend = useMemo(() => {
+    const m = new Map<string, { label: string; korpus: number; relevan: number }>();
+    for (const d of a.publicationsPerYear) m.set(d.label, { label: d.label, korpus: d.value, relevan: 0 });
+    for (const d of a.relevantPerYear) {
+      const e = m.get(d.label) || { label: d.label, korpus: 0, relevan: 0 };
+      e.relevan = d.value;
+      m.set(d.label, e);
+    }
+    return [...m.values()].sort((x, y) => Number(x.label) - Number(y.label));
+  }, [a]);
+  const shareTrend = yearTrend.map((d) => ({ label: d.label, value: d.korpus ? Math.round((d.relevan / d.korpus) * 100) : 0 }));
 
   const draftKeywords = Array.from(
     new Set(kwDraft.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean))
@@ -331,8 +344,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <Card title="Sebaran Keyword dalam Korpus" hint="Jumlah referensi yang memuat tiap keyword.">
           <HBar data={a.keywordCounts.map((k) => ({ label: k.keyword, value: k.docFreq })).sort((x, y) => y.value - x.value)} height={280} />
         </Card>
-        <Card title="Referensi Relevan per Tahun" hint="Tren publikasi yang cocok minimal 1 keyword.">
-          {a.relevantPerYear.length ? <TrendLine data={a.relevantPerYear} height={280} /> : <Empty />}
+        <Card title="Tren per Tahun: Korpus vs Relevan" hint="Ungu = seluruh publikasi tiap tahun (seberapa aktif bidangnya). Pink = yang menyinggung keyword Anda. Selisih garis = bagian korpus yang di luar fokus Anda.">
+          {yearTrend.length ? <MultiTrend data={yearTrend} height={280} /> : <Empty />}
         </Card>
       </div>
 
@@ -395,8 +408,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
       {/* Bibliometrics */}
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Publikasi per Tahun (korpus)">
-          {a.publicationsPerYear.length ? <TrendLine data={a.publicationsPerYear} height={260} /> : <Empty />}
+        <Card title="Rasio Relevansi per Tahun (%)" hint="Persentase publikasi tiap tahun yang menyinggung keyword Anda — apakah porsi topik Anda menaik atau menurun di dalam bidang.">
+          {shareTrend.length ? <TrendLine data={shareTrend} height={260} /> : <Empty />}
         </Card>
         <Card title="Word Cloud Keyword Korpus" hint={`Ukuran kata ∝ frekuensi. Sumber: ${a.keywordCloud.source}.`}>
           {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}

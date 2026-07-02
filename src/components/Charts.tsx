@@ -120,6 +120,30 @@ export function TrendLine({
   );
 }
 
+// Two-line trend: whole corpus vs keyword-relevant, per year.
+export function MultiTrend({
+  data,
+  height = 280,
+}: {
+  data: { label: string; korpus: number; relevan: number }[];
+  height?: number;
+}) {
+  const t = tooltipStyle();
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
+        <CartesianGrid stroke="rgba(255,255,255,.06)" />
+        <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
+        <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
+        <Tooltip {...t} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
+        <Line type="monotone" dataKey="korpus" name="Seluruh korpus" stroke="#818cf8" strokeWidth={2.5} dot={{ r: 3, fill: "#818cf8" }} />
+        <Line type="monotone" dataKey="relevan" name="Relevan (keyword Anda)" stroke="#f472b6" strokeWidth={2.5} dot={{ r: 3, fill: "#f472b6" }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function DivergingBar({
   data,
   height = 260,
