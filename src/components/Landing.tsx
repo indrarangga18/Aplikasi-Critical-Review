@@ -177,14 +177,18 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 grid grid-cols-3 gap-3">
                   <Stat label="Referensi" value={q.total} />
                   <Stat label="Abstrak" value={`${Math.round((q.withAbstract / q.total) * 100)}%`} />
-                  <Stat label="Keyword" value={`${Math.round((q.withKeywords / q.total) * 100)}%`} />
+                  <Stat label="Field KW" value={`${Math.round((q.withKeywords / q.total) * 100)}%`} />
                   <div className="col-span-3 text-xs text-slate-400 flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5" /> {filename}
                   </div>
-                  {(q.warnAbstract || q.warnKeywords) && (
+                  {q.warnAbstract && (
                     <p className="col-span-3 text-amber-300/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                      ⚠️ {q.warnAbstract && "<50% referensi punya abstrak — analisis masalah/novelty akan lebih lemah. "}
-                      {q.warnKeywords && "<50% punya field KW — co-occurrence bergantung judul/abstrak."}
+                      ⚠️ &lt;50% referensi punya abstrak — analisis masalah & novelty akan lebih lemah.
+                    </p>
+                  )}
+                  {q.warnKeywords && (
+                    <p className="col-span-3 text-slate-300 text-xs bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                      ℹ️ "Field KW" = metadata kata kunci penulis di dalam RIS ({q.withKeywords === 0 ? "0% — tidak ada" : "rendah"}). Ini <b>normal</b>: ekspor Zotero/Mendeley sering hanya memuat data bibliografi tanpa field KW. Analisis tetap berjalan penuh memakai judul + abstrak — Anda tetap memasukkan keyword sendiri di langkah berikutnya.
                     </p>
                   )}
                 </motion.div>
