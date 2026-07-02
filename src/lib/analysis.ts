@@ -503,10 +503,10 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
   const docCount = keywords.map((_, k) => U.reduce((acc, row) => acc + row[k], 0));
   let jaccSum = 0;
   let jaccN = 0;
-  // Rarity via lift: are keyword PAIRS combined less often than random chance predicts?
-  // (Using pairs/subsets — not requiring all keywords in one paper, which is ~always 0.)
-  let liftSum = 0;
-  let liftN = 0;
+  // Rarity: seberapa jarang pasangan keyword muncul BERSAMA (jumlah absolut, berbasis
+  // pasangan/subset — bukan menuntut semua keyword di satu paper). Sedikit kemunculan
+  // bersama = langka = mendukung kebaruan.
+  let coSum = 0;
   let bestA = "";
   let bestB = "";
   let bestCount = -1;
@@ -518,11 +518,7 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
         jaccSum += inter / uni;
         jaccN++;
       }
-      const expected = (docCount[a] * docCount[b]) / total; // co-occurrence bila independen
-      if (expected > 0) {
-        liftSum += Math.min(1, inter / expected);
-        liftN++;
-      }
+      coSum += inter;
       if (inter > bestCount) {
         bestCount = inter;
         bestA = keywords[a];
@@ -530,9 +526,12 @@ function noveltyCore(records: RisRecord[], keywords: string[]): NoveltyCore {
       }
     }
   const avgJaccard = jaccN ? jaccSum / jaccN : 0;
-  const avgLift = liftN ? liftSum / liftN : 0;
 
-  const rare = Math.min(Math.max(1 - avgLift, 0), 1);
+  // Rata-rata kemunculan bersama per pasangan, meluruh terhadap "skala matang"
+  // (≈2% korpus, minimal 2). avgPairCo kecil → rare tinggi (menuju 1).
+  const avgPairCo = totalPairs ? coSum / totalPairs : 0;
+  const rareScale = Math.max(2, total * 0.02);
+  const rare = Math.min(Math.max(Math.exp(-avgPairCo / rareScale), 0), 1);
   const gap = totalPairs ? zeroPairs / totalPairs : 0;
   const emergingMean = Math.max(
     -1,
@@ -595,11 +594,11 @@ export function noveltyScore(records: RisRecord[], keywords: string[]): NoveltyR
   });
 
   const factors: NoveltyFactor[] = [
-    mk("rare", "Keyword Rare", "Seberapa jarang keyword DIKOMBINASIKAN dibanding perkiraan acak (berbasis pasangan, bukan harus semua keyword sekaligus).", c.rare, NW.rare,
+    mk("rare", "Keyword Rare", "Seberapa jarang keyword muncul BERSAMA di referensi (berbasis pasangan/subset, bukan harus semua keyword sekaligus).", c.rare, NW.rare,
       c.bestCount > 0
         ? `Kombinasi terkuat: "${c.bestA}" + "${c.bestB}" (${c.bestCount} ref). ${c.refs3plus} referensi memuat ≥3 keyword; kedalaman maks ${c.maxDepth} keyword.`
         : `Tidak ada satu pun pasangan keyword yang pernah muncul bersama di korpus.`,
-      c.rare >= 0.8 ? "Kombinasi jauh lebih jarang dari perkiraan → kuat mendukung kebaruan." : c.rare >= 0.5 ? "Kombinasi lebih jarang dari perkiraan → mendukung kebaruan." : "Kombinasi sudah cukup sering digabung → menurunkan kebaruan.",
+      c.rare >= 0.66 ? "Keyword sangat jarang digabung → kuat mendukung kebaruan." : c.rare >= 0.33 ? "Sebagian kombinasi sudah pernah digabung." : "Keyword sudah sering digabung → menurunkan kebaruan.",
       true),
     mk("gap", "Gap Research", "Berapa banyak pasangan keyword yang belum pernah digabung.", c.gap, NW.gap,
       `${c.zeroPairs} dari ${c.totalPairs} pasangan keyword (${pct(c.gap)}%) belum pernah muncul bersama.`,
