@@ -318,7 +318,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
       {/* Sensitivity */}
       {a.novelty.sensitivity.length > 0 && (
-        <Card title="Sensitivity Analysis" icon={<SlidersHorizontal className="w-4 h-4" />} hint="Perubahan Novelty Score bila satu keyword dihapus. |Δ| besar = keyword itu paling menentukan skor." className="mb-4">
+        <Card title="Sensitivity Analysis" icon={<SlidersHorizontal className="w-4 h-4" />} hint={`Skenario "what-if": skor utama (${a.novelty.score}) memakai SEMUA keyword; tiap baris = skor bila 1 keyword dihapus. Wajar berbeda — |Δ| besar = keyword itu paling menentukan skor.`} className="mb-4">
           <div className="space-y-1.5 mt-1">
             {a.novelty.sensitivity.map((s) => {
               const up = s.delta > 0;
