@@ -89,6 +89,28 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   const best = a.recommendations[0];
 
+  // Keyword dynamics
+  const dyn = a.dynamics;
+  const evoFlow = dyn.evolution
+    .map((s) => `<b>${esc(s.label)}</b>: ${s.top.map((t) => esc(t.term)).join(", ") || "—"}`)
+    .join(" &nbsp;→&nbsp; ");
+  const burstItems = dyn.burst
+    .map((b) => `<li>${esc(b.term)} — <b style="color:#16a34a;">${b.isNew ? "BARU" : "+" + b.pct + "%"}</b></li>`)
+    .join("");
+  const decliningItems = dyn.declining
+    .map((b) => `<li>${esc(b.term)} — <b style="color:#dc2626;">${b.pct}%</b></li>`)
+    .join("");
+  const centralityRows = dyn.centrality
+    .slice(0, 10)
+    .map((c) => `<tr><td>${esc(c.term)}${c.isUserKw ? " ●" : ""}</td><td class="num">${c.degree}</td><td class="num">${c.betweenness}</td><td class="num">${c.eigenvector}</td></tr>`)
+    .join("");
+  const quadGroups = ["Motor", "Basic", "Niche", "Emerging/Declining"]
+    .map((q) => {
+      const terms = dyn.thematic.filter((t) => t.quadrant === q).map((t) => esc(t.term));
+      return `<tr><td><b>${q}</b></td><td>${terms.join(", ") || "—"}</td></tr>`;
+    })
+    .join("");
+
   const v = a.venn;
   const [vA, vB, vC] = v.sets;
   const vennRows = [
@@ -282,6 +304,26 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
       <h2>Sumber / Jurnal Teratas</h2>
       <ul>${topSources || "<li class='muted'>—</li>"}</ul>
     </div>
+  </section>
+
+  <section>
+    <h2>Dinamika Keyword</h2>
+    <p class="hint">Sumber: ${esc(dyn.source)}. ● = keyword Anda.</p>
+    ${evoFlow ? `<p style="font-size:13px;"><b>Evolution:</b> ${evoFlow}</p>` : ""}
+    <div class="cols">
+      <div>
+        <h3 style="font-size:14px;margin:0 0 4px;">Burst (naik tajam)</h3>
+        <ul>${burstItems || "<li class='muted'>—</li>"}</ul>
+      </div>
+      <div>
+        <h3 style="font-size:14px;margin:0 0 4px;">Declining (menurun)</h3>
+        <ul>${decliningItems || "<li class='muted'>—</li>"}</ul>
+      </div>
+    </div>
+    <h3 style="font-size:14px;margin:14px 0 4px;">Keyword Centrality</h3>
+    <table><thead><tr><th>Keyword</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Eigenvector</th></tr></thead><tbody>${centralityRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+    <h3 style="font-size:14px;margin:14px 0 4px;">Thematic Map (Quadrant)</h3>
+    <table><thead><tr><th>Kuadran</th><th>Keyword</th></tr></thead><tbody>${quadGroups}</tbody></table>
   </section>
 
   <p class="foot">

@@ -342,4 +342,69 @@ export function FitBars({
   );
 }
 
+// Bibliometrix-style thematic map: Centrality (x) vs Density (y), 4 quadrants.
+const QUAD_COLOR: Record<string, string> = {
+  Motor: "#34d399",
+  Niche: "#c084fc",
+  Basic: "#60a5fa",
+  "Emerging/Declining": "#fbbf24",
+};
+
+export function QuadrantMap({
+  points,
+  height = 360,
+}: {
+  points: { term: string; centrality: number; density: number; quadrant: string; isUserKw: boolean }[];
+  height?: number;
+}) {
+  if (!points.length) return null;
+  const med = (vals: number[]) => {
+    const s = [...vals].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const cMed = med(points.map((p) => p.centrality));
+  const dMed = med(points.map((p) => p.density));
+  const xL = `${cMed * 100}%`;
+  const yL = `${(1 - dMed) * 100}%`;
+
+  return (
+    <div>
+      <div className="relative rounded-xl border border-white/10 overflow-hidden" style={{ height }}>
+        {/* quadrant tints */}
+        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
+          <div style={{ background: "rgba(192,132,252,.06)" }} />
+          <div style={{ background: "rgba(52,211,153,.07)" }} />
+          <div style={{ background: "rgba(251,191,36,.06)" }} />
+          <div style={{ background: "rgba(96,165,250,.06)" }} />
+        </div>
+        {/* median crosshair */}
+        <div className="absolute top-0 bottom-0 border-l border-dashed border-white/15" style={{ left: xL }} />
+        <div className="absolute left-0 right-0 border-t border-dashed border-white/15" style={{ top: yL }} />
+        {/* quadrant labels */}
+        <span className="absolute top-1.5 right-2 text-[10px] font-semibold text-emerald-300/80">Motor</span>
+        <span className="absolute top-1.5 left-2 text-[10px] font-semibold text-violet-300/80">Niche</span>
+        <span className="absolute bottom-1.5 right-2 text-[10px] font-semibold text-blue-300/80">Basic</span>
+        <span className="absolute bottom-1.5 left-2 text-[10px] font-semibold text-amber-300/80">Emerging/Declining</span>
+        {/* points */}
+        {points.map((p, i) => (
+          <div
+            key={i}
+            className="absolute -translate-x-1/2 translate-y-1/2 flex flex-col items-center"
+            style={{ left: `${p.centrality * 100}%`, bottom: `${p.density * 100}%` }}
+            title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density})`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8", outline: p.isUserKw ? "2px solid #fff" : "none" }} />
+            <span className={`text-[9px] mt-0.5 max-w-[80px] truncate ${p.isUserKw ? "text-white font-semibold" : "text-slate-400"}`}>{p.term}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] text-slate-500 mt-1 px-1">
+        <span>← Centrality / relevansi →</span>
+        <span>↑ Density / perkembangan</span>
+      </div>
+    </div>
+  );
+}
+
 export { GRAD };

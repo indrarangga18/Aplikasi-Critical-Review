@@ -11,6 +11,7 @@ import {
   FileDown,
   Gauge,
   Info,
+  LayoutGrid,
   Lightbulb,
   Loader2,
   Mail,
@@ -19,13 +20,17 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Send,
+  Share2,
   Target,
+  TrendingDown,
+  TrendingUp,
   TriangleAlert,
+  Workflow,
   X,
 } from "lucide-react";
 import { runAnalysis, type GroupWithRefs } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, MultiTrend, TrendLine, Venn, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
@@ -378,6 +383,99 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
         <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
           {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
+        </Card>
+      </div>
+
+      {/* Keyword dynamics (evolution, burst, declining, centrality, thematic) */}
+      <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint={`Topik dominan per periode waktu. Sumber: ${a.dynamics.source}.`} className="mb-4">
+        {a.dynamics.evolution.length ? (
+          <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
+            {a.dynamics.evolution.map((s, i) => (
+              <div key={i} className="flex items-center gap-2 shrink-0">
+                <div className="glass rounded-xl px-4 py-3 min-w-[150px]">
+                  <div className="text-xs text-violet-300/80 mb-1">{s.label} · {s.docs} doc</div>
+                  {s.top.map((t, j) => (
+                    <div key={j} className={j === 0 ? "text-sm font-semibold text-white" : "text-xs text-slate-400"}>
+                      {t.term}{t.isUserKw && <span className="ml-1 text-violet-300">●</span>} <span className="text-slate-500">({t.count})</span>
+                    </div>
+                  ))}
+                </div>
+                {i < a.dynamics.evolution.length - 1 && <ChevronDown className="w-5 h-5 text-slate-600 -rotate-90 shrink-0" />}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="Butuh data tahun yang bervariasi untuk membentuk evolusi." />
+        )}
+        <p className="text-xs text-slate-500 mt-2">● = keyword Anda (selaras dengan Section 1).</p>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Burst Detection" icon={<TrendingUp className="w-4 h-4" />} hint="Keyword yang melonjak populer di periode terbaru (burst sederhana ala Kleinberg).">
+          {a.dynamics.burst.length ? (
+            <ul className="space-y-1.5 mt-1">
+              {a.dynamics.burst.map((b, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                  <span className={b.isUserKw ? "text-white font-medium" : "text-slate-200"}>{b.term}{b.isUserKw && <span className="ml-1 text-violet-300">●</span>}</span>
+                  <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 shrink-0">
+                    {b.isNew ? "BARU" : `+${b.pct}%`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty text="Tidak ada lonjakan signifikan terdeteksi." />
+          )}
+        </Card>
+        <Card title="Declining Keyword" icon={<TrendingDown className="w-4 h-4" />} hint="Topik yang mulai ditinggalkan (proporsi menurun dari periode awal ke akhir).">
+          {a.dynamics.declining.length ? (
+            <ul className="space-y-1.5 mt-1">
+              {a.dynamics.declining.map((b, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                  <span className={b.isUserKw ? "text-white font-medium" : "text-slate-200"}>{b.term}{b.isUserKw && <span className="ml-1 text-violet-300">●</span>}</span>
+                  <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-rose-500/15 text-rose-300 border border-rose-400/25 shrink-0">
+                    {b.pct}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty text="Tidak ada topik menurun tajam." />
+          )}
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Keyword Centrality" icon={<Share2 className="w-4 h-4" />} hint="Keyword paling penting di jaringan co-occurrence: degree, betweenness, eigenvector (0–1).">
+          {a.dynamics.centrality.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-1.5 pr-2 font-medium">Keyword</th>
+                    <th className="py-1.5 px-2 font-medium text-right" title="Degree centrality">Deg</th>
+                    <th className="py-1.5 px-2 font-medium text-right" title="Betweenness centrality">Betw</th>
+                    <th className="py-1.5 pl-2 font-medium text-right" title="Eigenvector centrality">Eig</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {a.dynamics.centrality.map((c, i) => (
+                    <tr key={i} className="border-b border-white/5">
+                      <td className={`py-1.5 pr-2 ${c.isUserKw ? "text-white font-medium" : "text-slate-200"}`}>{c.term}{c.isUserKw && <span className="ml-1 text-violet-300">●</span>}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.degree}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.betweenness}</td>
+                      <td className="py-1.5 pl-2 text-right tabular-nums text-violet-300 font-medium">{c.eigenvector}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty />
+          )}
+        </Card>
+        <Card title="Thematic Map (Quadrant)" icon={<LayoutGrid className="w-4 h-4" />} hint="Motor (penting & matang), Basic (penting, belum matang), Niche (matang, terisolasi), Emerging/Declining (baru/menurun).">
+          {a.dynamics.thematic.length ? <QuadrantMap points={a.dynamics.thematic} /> : <Empty />}
         </Card>
       </div>
 
