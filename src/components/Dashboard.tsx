@@ -415,7 +415,16 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         )}
       </Card>
 
-      <Card title="Momentum Keyword — Burst & Declining" icon={<TrendingUp className="w-4 h-4" />} hint="Perubahan proporsi tiap keyword (paruh awal → akhir, pendekatan Kleinberg burst). Hijau ▲ = burst (naik), merah ▼ = declining (turun). Selaras dengan sinyal Emerging di Section 1." className="mb-4">
+      <Card
+        title="Momentum Keyword — Burst & Declining"
+        icon={<TrendingUp className="w-4 h-4" />}
+        hint={
+          a.dynamics.yearT != null && a.dynamics.yearPrev != null
+            ? `Rumus year-over-year: (Fₜ − Fₜ₋₁)/Fₜ₋₁ × 100, dengan t = ${a.dynamics.yearT} dan t−1 = ${a.dynamics.yearPrev}. ▲ hijau = burst (naik), ▼ merah = declining (turun). Selaras dgn Emerging di Section 1.`
+            : "Butuh minimal 2 tahun berbeda untuk menghitung momentum."
+        }
+        className="mb-4"
+      >
         <div className="grid md:grid-cols-2 gap-x-6 gap-y-4">
           <div>
             <div className="text-xs font-semibold text-slate-300 mb-2">Keyword Anda ({a.dynamics.userMomentum.length})</div>
@@ -423,15 +432,18 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               <ul className="space-y-1.5">
                 {a.dynamics.userMomentum.map((m, i) => (
                   <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                    <span className="text-slate-200 flex items-center gap-1.5">
-                      <MomIcon dir={m.direction} /> {m.term}
+                    <span className="text-slate-200 flex items-center gap-1.5 min-w-0">
+                      <MomIcon dir={m.direction} /> <span className="truncate">{m.term}</span>
                     </span>
-                    <MomBadge m={m} />
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] text-slate-500 tabular-nums">{m.fprev}→{m.ft}</span>
+                      <MomBadge m={m} />
+                    </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <Empty text="Butuh variasi tahun untuk menghitung momentum." />
+              <Empty text="Butuh minimal 2 tahun berbeda untuk menghitung momentum." />
             )}
           </div>
           <div>
@@ -440,10 +452,13 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               <ul className="space-y-1.5">
                 {a.dynamics.candidates.map((m, i) => (
                   <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                    <span className="text-slate-300 italic flex items-center gap-1.5">
-                      <MomIcon dir={m.direction} /> {m.term}
+                    <span className="text-slate-300 italic flex items-center gap-1.5 min-w-0">
+                      <MomIcon dir={m.direction} /> <span className="truncate">{m.term}</span>
                     </span>
-                    <MomBadge m={m} />
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] text-slate-500 tabular-nums">{m.fprev}→{m.ft}</span>
+                      <MomBadge m={m} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -452,7 +467,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
             )}
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-3">Kandidat = istilah lain di korpus (bukan keyword Anda) yang sedang naik/turun tajam — pertimbangkan menambahkannya sebagai keyword.</p>
+        <p className="text-xs text-slate-500 mt-3">Fₜ₋₁→Fₜ = frekuensi keyword pada tahun t−1 dan t. Kandidat = istilah lain di korpus yang sedang naik/turun tajam — pertimbangkan menambahkannya sebagai keyword.</p>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">

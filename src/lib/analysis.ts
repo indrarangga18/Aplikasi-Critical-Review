@@ -899,8 +899,9 @@ export interface EvolutionStage {
 }
 export interface MomentumTerm {
   term: string;
-  growthPct: number | null; // null = baru muncul (dari 0)
-  latePct: number; // proporsi di paruh akhir (%)
+  growthPct: number | null; // (Ft − Ft-1)/Ft-1 × 100; null = baru (Ft-1 = 0)
+  ft: number; // frekuensi tahun t
+  fprev: number; // frekuensi tahun t-1
   direction: "up" | "down" | "flat";
   isUserKw: boolean;
 }
@@ -920,6 +921,8 @@ export interface ThematicTerm {
 }
 export interface KeywordDynamics {
   source: string;
+  yearT: number | null; // tahun t (terbaru)
+  yearPrev: number | null; // tahun t-1
   evolution: EvolutionStage[];
   userMomentum: MomentumTerm[]; // seluruh keyword Anda, terurut naik→turun
   candidates: MomentumTerm[]; // kandidat keyword lain dari korpus
@@ -963,11 +966,6 @@ function corpusTermDocs(records: RisRecord[], topN: number): { vocab: string[]; 
   return { vocab, docs };
 }
 
-function dirOf(g: number, isNew: boolean): "up" | "down" | "flat" {
-  if (isNew || g >= 25) return "up";
-  if (g <= -25) return "down";
-  return "flat";
-}
 
 
 function median(arr: number[]): number {
@@ -1027,7 +1025,6 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
   const yearMax = years.length ? Math.max(...years) : null;
 
   const isUser = (t: string) => keywords.some((k) => containsTerm(t, k));
-  const mid = yearMin != null && yearMax != null ? Math.floor((yearMin + yearMax) / 2) : null;
   const hasTime = yearMin != null && yearMax != null && yearMax > yearMin;
 
   // 1) Evolution — kumulatif A → A+B → A+B+C berdasarkan periode PUNCAK tiap keyword.
@@ -1058,58 +1055,79 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     }
   }
 
-  // 2) Momentum (merge Burst & Declining) — SEMUA keyword Anda + kandidat dari korpus.
+  // 2) Momentum (merge Burst & Declining) — rumus year-over-year:
+  //    BurstScore = (Ft − Ft-1)/Ft-1 × 100 ; Declining = kebalikannya (Ft < Ft-1).
+  //    Ft = frekuensi keyword di tahun terbaru; Ft-1 = tahun sebelumnya (yang ada datanya).
   let userMomentum: MomentumTerm[] = [];
   let candidates: MomentumTerm[] = [];
   const dirMap = new Map<string, "up" | "down" | "flat">();
-  if (hasTime && mid != null) {
-    const earlyU = present.filter((u) => u.year != null && u.year <= mid);
-    const lateU = present.filter((u) => u.year != null && u.year > mid);
-    if (earlyU.length && lateU.length) {
-      userMomentum = keywords
-        .map((k, ki) => {
-          const e = earlyU.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / earlyU.length;
-          const l = lateU.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / lateU.length;
-          const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
-          return { k, e, l, g };
-        })
-        .filter((r) => r.e > 0 || r.l > 0)
-        .sort((a, b) => (b.g === Infinity ? 1e9 : b.g) - (a.g === Infinity ? 1e9 : a.g))
-        .map((r) => {
-          const dir = dirOf(r.g === Infinity ? Infinity : r.g, r.e === 0 && r.l > 0);
-          dirMap.set(r.k, dir);
-          return { term: r.k, growthPct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), direction: dir, isUserKw: true };
-        });
+  const presentYears = [...new Set(years)].sort((a, b) => a - b);
+  const yearT = presentYears.length ? presentYears[presentYears.length - 1] : null;
+  const yearPrev = presentYears.length >= 2 ? presentYears[presentYears.length - 2] : null;
 
-      // Candidate corpus terms (not the user's) with strong momentum.
-      const { vocab, docs } = corpusTermDocs(records, 60);
-      const earlyC = docs.filter((d) => d.year != null && d.year <= mid);
-      const lateC = docs.filter((d) => d.year != null && d.year > mid);
-      const share = (arr: TermDoc[], t: string) => (arr.length ? arr.reduce((a, d) => a + (d.terms.has(t) ? 1 : 0), 0) / arr.length : 0);
-      const ranked = vocab
-        .filter((t) => !isUser(t))
-        .map((t) => {
-          const e = share(earlyC, t);
-          const l = share(lateC, t);
-          const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
-          return { t, e, l, g };
-        })
-        .filter((r) => (r.l >= 0.04 || r.e >= 0.04) && (r.g === Infinity || Math.abs(r.g) >= 50))
-        .sort((a, b) => (b.g === Infinity ? 1e9 : Math.abs(b.g)) - (a.g === Infinity ? 1e9 : Math.abs(a.g)));
-      // Greedy dedup: skip terms sharing a word with an already-picked candidate
-      // (drops "large"/"language" once "large language" is in).
-      const picked: typeof ranked = [];
-      for (const r of ranked) {
-        const words = r.t.split(" ");
-        if (!picked.some((p) => p.t.split(" ").some((w) => words.includes(w)))) picked.push(r);
-        if (picked.length >= 6) break;
+  if (yearT != null && yearPrev != null) {
+    const yoy = (Ft: number, Fprev: number, everPresent: boolean) => {
+      let g: number;
+      let dir: "up" | "down" | "flat";
+      if (Fprev > 0) {
+        g = ((Ft - Fprev) / Fprev) * 100;
+        dir = g > 0 ? "up" : g < 0 ? "down" : "flat";
+      } else if (Ft > 0) {
+        g = Infinity;
+        dir = "up"; // baru muncul
+      } else {
+        g = everPresent ? -100 : 0; // pernah ada lalu hilang → −100 (declining); tak pernah → flat
+        dir = everPresent ? "down" : "flat";
       }
-      candidates = picked.map((r) => {
-        const dir = dirOf(r.g === Infinity ? Infinity : r.g, r.e === 0 && r.l > 0);
-        dirMap.set(r.t, dir);
-        return { term: r.t, growthPct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), direction: dir, isUserKw: false };
+      return { g, dir };
+    };
+
+    // User keywords
+    const cntUser = (yr: number, ki: number) => present.reduce((a, u) => a + (u.year === yr && u.has[ki] ? 1 : 0), 0);
+    const totalUser = keywords.map((_, ki) => present.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0));
+    userMomentum = keywords
+      .map((k, ki) => {
+        const Ft = cntUser(yearT, ki);
+        const Fprev = cntUser(yearPrev, ki);
+        const { g, dir } = yoy(Ft, Fprev, totalUser[ki] > 0);
+        return { term: k, ft: Ft, fprev: Fprev, g, dir, ever: totalUser[ki] > 0 };
+      })
+      .filter((r) => r.ever)
+      .sort((a, b) => (b.g === Infinity ? 1e9 : b.g) - (a.g === Infinity ? 1e9 : a.g))
+      .map((r) => {
+        dirMap.set(r.term, r.dir);
+        return { term: r.term, growthPct: r.g === Infinity ? null : Math.round(r.g), ft: r.ft, fprev: r.fprev, direction: r.dir, isUserKw: true };
       });
-    }
+
+    // Candidate corpus terms (not the user's), most decisive burst/decline
+    const { vocab, docs } = corpusTermDocs(records, 60);
+    const cntTerm = (yr: number, t: string) => docs.reduce((a, d) => a + (d.year === yr && d.terms.has(t) ? 1 : 0), 0);
+    const totalTerm = (t: string) => docs.reduce((a, d) => a + (d.terms.has(t) ? 1 : 0), 0);
+    const ranked = vocab
+      .filter((t) => !isUser(t))
+      .map((t) => {
+        const Ft = cntTerm(yearT, t);
+        const Fprev = cntTerm(yearPrev, t);
+        const tot = totalTerm(t);
+        const { g, dir } = yoy(Ft, Fprev, tot > 0);
+        return { t, ft: Ft, fprev: Fprev, g, dir, tot };
+      })
+      .filter((r) => r.tot >= 3 && r.dir !== "flat");
+    const dedup = (arr: typeof ranked, n: number) => {
+      const out: typeof ranked = [];
+      for (const r of arr) {
+        const words = r.t.split(" ");
+        if (!out.some((p) => p.t.split(" ").some((w) => words.includes(w)))) out.push(r);
+        if (out.length >= n) break;
+      }
+      return out;
+    };
+    const ups = dedup([...ranked].filter((r) => r.dir === "up").sort((a, b) => (b.g === Infinity ? 1e9 : b.g) - (a.g === Infinity ? 1e9 : a.g)), 3);
+    const downs = dedup([...ranked].filter((r) => r.dir === "down").sort((a, b) => a.g - b.g), 3);
+    candidates = [...ups, ...downs].map((r) => {
+      dirMap.set(r.t, r.dir);
+      return { term: r.t, growthPct: r.g === Infinity ? null : Math.round(r.g), ft: r.ft, fprev: r.fprev, direction: r.dir, isUserKw: false };
+    });
   }
 
   // 3) Centrality — jaringan co-occurrence keyword ANDA (userCoocMatrix, sama dgn Section 1).
@@ -1167,7 +1185,7 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     });
   }
 
-  return { source: "keyword Anda (pencocokan bilingual EN↔ID)", evolution, userMomentum, candidates, centrality, thematic };
+  return { source: "keyword Anda (pencocokan bilingual EN↔ID)", yearT, yearPrev, evolution, userMomentum, candidates, centrality, thematic };
 }
 
 // ---------- Top-level orchestrator ----------

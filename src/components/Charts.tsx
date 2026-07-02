@@ -383,38 +383,46 @@ export function QuadrantMap({
         <span className="absolute top-1.5 left-2 text-[10px] font-semibold text-violet-300/80">Niche</span>
         <span className="absolute bottom-1.5 right-2 text-[10px] font-semibold text-blue-300/80">Basic</span>
         <span className="absolute bottom-1.5 left-2 text-[10px] font-semibold text-amber-300/80">Emerging/Declining</span>
+        {/* numbered dots — no text labels on plot, so nothing overlaps */}
+        {points.map((p, i) => (
+          <div
+            key={i}
+            className="absolute -translate-x-1/2 translate-y-1/2 grid place-items-center rounded-full text-[9px] font-bold shrink-0"
+            style={{
+              left: `${px(p.centrality)}%`,
+              bottom: `${px(p.density)}%`,
+              width: 18,
+              height: 18,
+              background: QUAD_COLOR[p.quadrant] || "#94a3b8",
+              color: "#0b0f1e",
+              opacity: p.isUserKw ? 1 : 0.7,
+              border: p.isUserKw ? "2px solid #fff" : "1px dashed rgba(255,255,255,.6)",
+            }}
+            title={`${p.term} — ${p.quadrant}`}
+          >
+            {i + 1}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-3 text-[10px] text-slate-500 mt-1 px-1">
+        <span>← Centrality / relevansi →</span>
+        <span>↑ Density / perkembangan</span>
+      </div>
+      {/* legend maps numbers → keywords (avoids label overlap entirely) */}
+      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 mt-3 text-[11px]">
         {points.map((p, i) => {
-          const rightHalf = px(p.centrality) > 55;
           const arrow = p.momentum === "up" ? "▲" : p.momentum === "down" ? "▼" : "";
-          const arrowColor = p.momentum === "up" ? "#34d399" : p.momentum === "down" ? "#fb7185" : "#94a3b8";
+          const arrowColor = p.momentum === "up" ? "#34d399" : p.momentum === "down" ? "#fb7185" : "#64748b";
           return (
-            <div
-              key={i}
-              className="absolute flex items-center gap-1"
-              style={{
-                left: `${px(p.centrality)}%`,
-                bottom: `${px(p.density)}%`,
-                transform: `translate(${rightHalf ? "-100%" : "0"}, 50%)`,
-                flexDirection: rightHalf ? "row-reverse" : "row",
-              }}
-              title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density}${p.momentum ? ", momentum " + p.momentum : ""})`}
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-black/30"
-                style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8", opacity: p.isUserKw ? 1 : 0.55 }}
-              />
-              <span className={`text-[10px] whitespace-nowrap bg-black/50 rounded px-1 ${p.isUserKw ? "text-slate-100 font-medium" : "text-slate-400 italic"}`}>
-                {p.term}
-                {arrow && <span style={{ color: arrowColor }}> {arrow}</span>}
-              </span>
+            <div key={i} className="flex items-center gap-1.5 min-w-0">
+              <span className="grid place-items-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0" style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8", color: "#0b0f1e" }}>{i + 1}</span>
+              <span className={`truncate ${p.isUserKw ? "text-slate-100" : "text-slate-400 italic"}`}>{p.term}</span>
+              {arrow && <span style={{ color: arrowColor }} className="shrink-0">{arrow}</span>}
             </div>
           );
         })}
       </div>
-      <div className="flex flex-wrap justify-between gap-x-3 text-[10px] text-slate-500 mt-1 px-1">
-        <span>← Centrality / relevansi (keterhubungan) →</span>
-        <span>↑ Density / perkembangan · <b className="text-slate-400">tebal</b>=keyword Anda, <i>miring</i>=kandidat · ▲naik ▼turun</span>
-      </div>
+      <p className="text-[10px] text-slate-500 mt-2"><b className="text-slate-400">Tebal/putih</b> = keyword Anda · <i>miring/putus</i> = kandidat korpus · ▲ naik ▼ turun · warna = kuadran.</p>
     </div>
   );
 }

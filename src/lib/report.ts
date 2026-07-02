@@ -98,11 +98,12 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     m.growthPct === null ? "BARU" : `${m.growthPct > 0 ? "+" : ""}${m.growthPct}%`;
   const momColor = (d: string) => (d === "up" ? "#16a34a" : d === "down" ? "#dc2626" : "#64748b");
   const userMomItems = dyn.userMomentum
-    .map((m) => `<li>${esc(m.term)} — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
+    .map((m) => `<li>${esc(m.term)} <span style="color:#94a3b8;">(${m.fprev}→${m.ft})</span> — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
     .join("");
   const candItems = dyn.candidates
-    .map((m) => `<li><i>${esc(m.term)}</i> — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
+    .map((m) => `<li><i>${esc(m.term)}</i> <span style="color:#94a3b8;">(${m.fprev}→${m.ft})</span> — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
     .join("");
+  const momCaption = dyn.yearT != null && dyn.yearPrev != null ? `Year-over-year (Fₜ − Fₜ₋₁)/Fₜ₋₁ × 100, t=${dyn.yearT}, t−1=${dyn.yearPrev}.` : "";
   const centralityRows = dyn.centrality
     .slice(0, 10)
     .map((c) => `<tr><td>${esc(c.term)}</td><td class="num">${c.degree}</td><td class="num">${c.betweenness}</td><td class="num">${c.eigenvector}</td></tr>`)
@@ -311,7 +312,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   <section>
     <h2>Dinamika Keyword</h2>
-    <p class="hint">Berbasis keyword Anda (${esc(dyn.source)}).</p>
+    <p class="hint">Berbasis keyword Anda (${esc(dyn.source)}). ${esc(momCaption)}</p>
     ${evoFlow ? `<p style="font-size:13px;"><b>Evolution (kumulatif, garis bawah = baru):</b> ${evoFlow}</p>` : ""}
     <div class="cols">
       <div>
