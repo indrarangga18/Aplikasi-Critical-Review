@@ -891,22 +891,17 @@ export function titleRecommendationFit(
   });
 }
 
-// ---------- Keyword dynamics (evolution, burst, declining, centrality, thematic map) ----------
+// ---------- Keyword dynamics (evolution, momentum, centrality, thematic map) ----------
 export interface EvolutionStage {
   label: string;
   docs: number;
-  top: { term: string; count: number; isUserKw: boolean }[];
+  emerged: { term: string; isNew: boolean }[]; // kumulatif: A → A+B → A+B+C
 }
-export interface BurstTerm {
+export interface MomentumTerm {
   term: string;
-  pct: number | null; // null = topik baru muncul (dari 0)
-  latePct: number; // proporsi di periode akhir (%)
-  isNew: boolean;
-  isUserKw: boolean;
-}
-export interface DecliningTerm {
-  term: string;
-  pct: number; // negatif
+  growthPct: number | null; // null = baru muncul (dari 0)
+  latePct: number; // proporsi di paruh akhir (%)
+  direction: "up" | "down" | "flat";
   isUserKw: boolean;
 }
 export interface CentralityTerm {
@@ -914,22 +909,64 @@ export interface CentralityTerm {
   degree: number;
   betweenness: number;
   eigenvector: number;
-  isUserKw: boolean;
 }
 export interface ThematicTerm {
   term: string;
   centrality: number; // 0–1 (relevansi/keterhubungan)
   density: number; // 0–1 (perkembangan/kohesi)
   quadrant: "Motor" | "Niche" | "Basic" | "Emerging/Declining";
+  momentum: "up" | "down" | "flat";
   isUserKw: boolean;
 }
 export interface KeywordDynamics {
   source: string;
   evolution: EvolutionStage[];
-  burst: BurstTerm[];
-  declining: DecliningTerm[];
+  userMomentum: MomentumTerm[]; // seluruh keyword Anda, terurut naik→turun
+  candidates: MomentumTerm[]; // kandidat keyword lain dari korpus
   centrality: CentralityTerm[];
   thematic: ThematicTerm[];
+}
+
+// Academic filler dropped from title/abstract candidate extraction.
+const ACADEMIC_STOP = new Set(
+  ("research study studies method methods methodology result results analysis analyses approach approaches using used use uses based paper papers article articles propose proposed proposes present presents presented novel data dataset datasets review reviews literature case cases effect effects impact impacts toward towards within among findings finding objective objectives aim aims purpose conclusion conclusions showed shows show shown significant significantly respectively however therefore thus also well work works framework frameworks technique techniques application applications performance evaluate evaluated evaluation provide provides provided investigate investigated examine examined explore explored develop developed developing high low different various several many more most highly compared comparison order due able make makes making moreover furthermore whereas although new").split(" ")
+);
+
+interface TermDoc {
+  year: number | null;
+  terms: Set<string>;
+}
+/** Corpus term sets (KW field, else unigram+bigram from title+abstract) for candidate mining. */
+function corpusTermDocs(records: RisRecord[], topN: number): { vocab: string[]; docs: TermDoc[] } {
+  const kwTotal = records.reduce((a, r) => a + r.keywords.length, 0);
+  const useKw = kwTotal >= 12;
+  const raw: TermDoc[] = records.map((r) => {
+    let terms: string[];
+    if (useKw) terms = r.keywords;
+    else {
+      const toks = (r.title + " " + r.abstract)
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 3 && !STOPWORDS.has(w) && !ACADEMIC_STOP.has(w) && !/^\d+$/.test(w));
+      const g: string[] = [...toks];
+      for (let i = 0; i < toks.length - 1; i++) g.push(toks[i] + " " + toks[i + 1]);
+      terms = g;
+    }
+    return { year: r.year, terms: new Set(terms) };
+  });
+  const freq = new Map<string, number>();
+  for (const d of raw) for (const t of d.terms) freq.set(t, (freq.get(t) || 0) + 1);
+  const vocab = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN).map((x) => x[0]);
+  const vset = new Set(vocab);
+  const docs = raw.map((d) => ({ year: d.year, terms: new Set([...d.terms].filter((t) => vset.has(t))) }));
+  return { vocab, docs };
+}
+
+function dirOf(g: number, isNew: boolean): "up" | "down" | "flat" {
+  if (isNew || g >= 25) return "up";
+  if (g <= -25) return "down";
+  return "flat";
 }
 
 
@@ -989,65 +1026,105 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
   const yearMin = years.length ? Math.min(...years) : null;
   const yearMax = years.length ? Math.max(...years) : null;
 
-  // 1) Evolution — ranking keyword ANDA per periode waktu.
+  const isUser = (t: string) => keywords.some((k) => containsTerm(t, k));
+  const mid = yearMin != null && yearMax != null ? Math.floor((yearMin + yearMax) / 2) : null;
+  const hasTime = yearMin != null && yearMax != null && yearMax > yearMin;
+
+  // 1) Evolution — kumulatif A → A+B → A+B+C berdasarkan periode PUNCAK tiap keyword.
   const evolution: EvolutionStage[] = [];
-  if (yearMin != null && yearMax != null && yearMax > yearMin) {
-    const P = Math.min(4, yearMax - yearMin + 1);
-    const span = (yearMax - yearMin + 1) / P;
+  if (hasTime) {
+    const P = Math.min(4, yearMax! - yearMin! + 1);
+    const span = (yearMax! - yearMin! + 1) / P;
+    const bounds = Array.from({ length: P }, (_, p) => ({
+      lo: Math.round(yearMin! + p * span),
+      hi: p === P - 1 ? yearMax! : Math.round(yearMin! + (p + 1) * span) - 1,
+    }));
+    const periodDocs = bounds.map((b) => present.filter((u) => u.year != null && u.year >= b.lo && u.year <= b.hi));
+    const share = periodDocs.map((pd) => keywords.map((_, ki) => (pd.length ? pd.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / pd.length : 0)));
+    const totalCount = keywords.map((_, ki) => present.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0));
+    const peak = keywords.map((_, ki) => {
+      let best = -1;
+      let bp = 0;
+      for (let p = 0; p < P; p++) if (share[p][ki] > best) { best = share[p][ki]; bp = p; }
+      return bp;
+    });
     for (let p = 0; p < P; p++) {
-      const lo = Math.round(yearMin + p * span);
-      const hi = p === P - 1 ? yearMax : Math.round(yearMin + (p + 1) * span) - 1;
-      const inP = present.filter((u) => u.year != null && u.year >= lo && u.year <= hi);
-      const counts = keywords
-        .map((k, ki) => ({ term: k, count: inP.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0), isUserKw: true }))
-        .filter((c) => c.count > 0)
-        .sort((a, b) => b.count - a.count);
-      evolution.push({ label: lo === hi ? `${lo}` : `${lo}–${hi}`, docs: inP.length, top: counts.slice(0, 4) });
+      const emerged = keywords
+        .map((k, ki) => ({ term: k, ki }))
+        .filter((x) => totalCount[x.ki] > 0 && peak[x.ki] <= p)
+        .sort((a, b) => peak[a.ki] - peak[b.ki] || totalCount[b.ki] - totalCount[a.ki])
+        .map((x) => ({ term: x.term, isNew: peak[x.ki] === p }));
+      evolution.push({ label: bounds[p].lo === bounds[p].hi ? `${bounds[p].lo}` : `${bounds[p].lo}–${bounds[p].hi}`, docs: periodDocs[p].length, emerged });
     }
   }
 
-  // 2) Burst + 3) Declining — proporsi tiap keyword ANDA di periode awal vs akhir.
-  let burst: BurstTerm[] = [];
-  let declining: DecliningTerm[] = [];
-  if (yearMin != null && yearMax != null && yearMax > yearMin) {
-    const mid = Math.floor((yearMin + yearMax) / 2);
-    const early = present.filter((u) => u.year != null && u.year <= mid);
-    const late = present.filter((u) => u.year != null && u.year > mid);
-    if (early.length && late.length) {
-      const rows = keywords.map((k, ki) => {
-        const e = early.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / early.length;
-        const l = late.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / late.length;
-        const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
-        return { term: k, e, l, g };
-      });
-      burst = rows
-        .filter((r) => r.l > 0 && (r.g === Infinity || r.g >= 25))
+  // 2) Momentum (merge Burst & Declining) — SEMUA keyword Anda + kandidat dari korpus.
+  let userMomentum: MomentumTerm[] = [];
+  let candidates: MomentumTerm[] = [];
+  const dirMap = new Map<string, "up" | "down" | "flat">();
+  if (hasTime && mid != null) {
+    const earlyU = present.filter((u) => u.year != null && u.year <= mid);
+    const lateU = present.filter((u) => u.year != null && u.year > mid);
+    if (earlyU.length && lateU.length) {
+      userMomentum = keywords
+        .map((k, ki) => {
+          const e = earlyU.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / earlyU.length;
+          const l = lateU.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / lateU.length;
+          const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
+          return { k, e, l, g };
+        })
+        .filter((r) => r.e > 0 || r.l > 0)
         .sort((a, b) => (b.g === Infinity ? 1e9 : b.g) - (a.g === Infinity ? 1e9 : a.g))
-        .map((r) => ({ term: r.term, pct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), isNew: r.e === 0, isUserKw: true }));
-      declining = rows
-        .filter((r) => r.e > 0 && r.g !== Infinity && r.g <= -25)
-        .sort((a, b) => a.g - b.g)
-        .map((r) => ({ term: r.term, pct: Math.round(r.g), isUserKw: true }));
+        .map((r) => {
+          const dir = dirOf(r.g === Infinity ? Infinity : r.g, r.e === 0 && r.l > 0);
+          dirMap.set(r.k, dir);
+          return { term: r.k, growthPct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), direction: dir, isUserKw: true };
+        });
+
+      // Candidate corpus terms (not the user's) with strong momentum.
+      const { vocab, docs } = corpusTermDocs(records, 60);
+      const earlyC = docs.filter((d) => d.year != null && d.year <= mid);
+      const lateC = docs.filter((d) => d.year != null && d.year > mid);
+      const share = (arr: TermDoc[], t: string) => (arr.length ? arr.reduce((a, d) => a + (d.terms.has(t) ? 1 : 0), 0) / arr.length : 0);
+      const ranked = vocab
+        .filter((t) => !isUser(t))
+        .map((t) => {
+          const e = share(earlyC, t);
+          const l = share(lateC, t);
+          const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
+          return { t, e, l, g };
+        })
+        .filter((r) => (r.l >= 0.04 || r.e >= 0.04) && (r.g === Infinity || Math.abs(r.g) >= 50))
+        .sort((a, b) => (b.g === Infinity ? 1e9 : Math.abs(b.g)) - (a.g === Infinity ? 1e9 : Math.abs(a.g)));
+      // Greedy dedup: skip terms sharing a word with an already-picked candidate
+      // (drops "large"/"language" once "large language" is in).
+      const picked: typeof ranked = [];
+      for (const r of ranked) {
+        const words = r.t.split(" ");
+        if (!picked.some((p) => p.t.split(" ").some((w) => words.includes(w)))) picked.push(r);
+        if (picked.length >= 6) break;
+      }
+      candidates = picked.map((r) => {
+        const dir = dirOf(r.g === Infinity ? Infinity : r.g, r.e === 0 && r.l > 0);
+        dirMap.set(r.t, dir);
+        return { term: r.t, growthPct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), direction: dir, isUserKw: false };
+      });
     }
   }
 
-  // 4) Centrality + 5) Thematic map — jaringan co-occurrence keyword ANDA
-  // (matriks yang sama dengan Section 1: userCoocMatrix).
+  // 3) Centrality — jaringan co-occurrence keyword ANDA (userCoocMatrix, sama dgn Section 1).
   const co = userCoocMatrix(records, keywords);
   let centrality: CentralityTerm[] = [];
-  let thematic: ThematicTerm[] = [];
-  const V = K;
-  if (V >= 2) {
-    const degree = co.map((row) => row.filter((w) => w > 0).length / (V - 1));
-    // eigenvector via power iteration (weighted)
-    let x = new Array(V).fill(1 / Math.sqrt(V));
+  if (K >= 2) {
+    const degree = co.map((row) => row.filter((w) => w > 0).length / (K - 1));
+    let x = new Array(K).fill(1 / Math.sqrt(K));
     for (let it = 0; it < 200; it++) {
-      const y = new Array(V).fill(0);
-      for (let i = 0; i < V; i++) for (let j = 0; j < V; j++) y[i] += co[i][j] * x[j];
+      const y = new Array(K).fill(0);
+      for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) y[i] += co[i][j] * x[j];
       const norm = Math.hypot(...y) || 1;
       const xn = y.map((v) => v / norm);
       let diff = 0;
-      for (let i = 0; i < V; i++) diff += Math.abs(xn[i] - x[i]);
+      for (let i = 0; i < K; i++) diff += Math.abs(xn[i] - x[i]);
       x = xn;
       if (diff < 1e-9) break;
     }
@@ -1055,12 +1132,24 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     const eig = x.map((v) => Math.abs(v) / emax);
     const bet = betweennessBrandes(co);
     centrality = keywords
-      .map((t, i) => ({ term: t, degree: +degree[i].toFixed(3), betweenness: +bet[i].toFixed(3), eigenvector: +eig[i].toFixed(3), isUserKw: true }))
+      .map((t, i) => ({ term: t, degree: +degree[i].toFixed(3), betweenness: +bet[i].toFixed(3), eigenvector: +eig[i].toFixed(3) }))
       .sort((a, b) => b.eigenvector - a.eigenvector);
+  }
 
-    // Thematic map: centrality (total links) vs density (avg internal strength)
-    const cRaw = co.map((row) => row.reduce((a, b) => a + b, 0));
-    const dRaw = co.map((row) => {
+  // 4) Thematic map — keyword Anda + kandidat, ditandai momentum (agar Emerging terisi).
+  const themeTerms = [...keywords, ...candidates.slice(0, 4).map((c) => c.term)];
+  let thematic: ThematicTerm[] = [];
+  const T = themeTerms.length;
+  if (T >= 2) {
+    const pres = records.map((r) => themeTerms.map((t) => (containsTerm(r.searchable, t) ? 1 : 0)));
+    const tco: number[][] = Array.from({ length: T }, () => new Array(T).fill(0));
+    for (const row of pres)
+      for (let a = 0; a < T; a++) {
+        if (!row[a]) continue;
+        for (let b = a + 1; b < T; b++) if (row[b]) { tco[a][b]++; tco[b][a]++; }
+      }
+    const cRaw = tco.map((row) => row.reduce((a, b) => a + b, 0));
+    const dRaw = tco.map((row) => {
       const nb = row.filter((w) => w > 0);
       return nb.length ? nb.reduce((a, b) => a + b, 0) / nb.length : 0;
     });
@@ -1070,15 +1159,15 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     const dN = dRaw.map((v) => v / dmax);
     const cMed = median(cN.filter((v) => v > 0)) || median(cN);
     const dMed = median(dN.filter((v) => v > 0)) || median(dN);
-    thematic = keywords.map((t, i) => {
+    thematic = themeTerms.map((t, i) => {
       const hiC = cN[i] >= cMed && cN[i] > 0;
       const hiD = dN[i] >= dMed && dN[i] > 0;
       const quadrant: ThematicTerm["quadrant"] = hiC && hiD ? "Motor" : !hiC && hiD ? "Niche" : hiC && !hiD ? "Basic" : "Emerging/Declining";
-      return { term: t, centrality: +cN[i].toFixed(3), density: +dN[i].toFixed(3), quadrant, isUserKw: true };
+      return { term: t, centrality: +cN[i].toFixed(3), density: +dN[i].toFixed(3), quadrant, momentum: dirMap.get(t) || "flat", isUserKw: i < K };
     });
   }
 
-  return { source: "keyword Anda (pencocokan bilingual EN↔ID)", evolution, burst, declining, centrality, thematic };
+  return { source: "keyword Anda (pencocokan bilingual EN↔ID)", evolution, userMomentum, candidates, centrality, thematic };
 }
 
 // ---------- Top-level orchestrator ----------

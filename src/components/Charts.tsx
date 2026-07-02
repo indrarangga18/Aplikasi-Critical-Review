@@ -352,9 +352,9 @@ const QUAD_COLOR: Record<string, string> = {
 
 export function QuadrantMap({
   points,
-  height = 420,
+  height = 440,
 }: {
-  points: { term: string; centrality: number; density: number; quadrant: string; isUserKw: boolean }[];
+  points: { term: string; centrality: number; density: number; quadrant: string; momentum?: string; isUserKw: boolean }[];
   height?: number;
 }) {
   if (!points.length) return null;
@@ -385,6 +385,8 @@ export function QuadrantMap({
         <span className="absolute bottom-1.5 left-2 text-[10px] font-semibold text-amber-300/80">Emerging/Declining</span>
         {points.map((p, i) => {
           const rightHalf = px(p.centrality) > 55;
+          const arrow = p.momentum === "up" ? "▲" : p.momentum === "down" ? "▼" : "";
+          const arrowColor = p.momentum === "up" ? "#34d399" : p.momentum === "down" ? "#fb7185" : "#94a3b8";
           return (
             <div
               key={i}
@@ -395,17 +397,23 @@ export function QuadrantMap({
                 transform: `translate(${rightHalf ? "-100%" : "0"}, 50%)`,
                 flexDirection: rightHalf ? "row-reverse" : "row",
               }}
-              title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density})`}
+              title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density}${p.momentum ? ", momentum " + p.momentum : ""})`}
             >
-              <span className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-black/30" style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8" }} />
-              <span className="text-[10px] text-slate-200 whitespace-nowrap bg-black/40 rounded px-1">{p.term}</span>
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-black/30"
+                style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8", opacity: p.isUserKw ? 1 : 0.55 }}
+              />
+              <span className={`text-[10px] whitespace-nowrap bg-black/50 rounded px-1 ${p.isUserKw ? "text-slate-100 font-medium" : "text-slate-400 italic"}`}>
+                {p.term}
+                {arrow && <span style={{ color: arrowColor }}> {arrow}</span>}
+              </span>
             </div>
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-slate-500 mt-1 px-1">
+      <div className="flex flex-wrap justify-between gap-x-3 text-[10px] text-slate-500 mt-1 px-1">
         <span>← Centrality / relevansi (keterhubungan) →</span>
-        <span>↑ Density / perkembangan</span>
+        <span>↑ Density / perkembangan · <b className="text-slate-400">tebal</b>=keyword Anda, <i>miring</i>=kandidat · ▲naik ▼turun</span>
       </div>
     </div>
   );

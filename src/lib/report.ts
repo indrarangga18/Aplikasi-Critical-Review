@@ -92,13 +92,16 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   // Keyword dynamics
   const dyn = a.dynamics;
   const evoFlow = dyn.evolution
-    .map((s) => `<b>${esc(s.label)}</b>: ${s.top.map((t) => esc(t.term)).join(", ") || "—"}`)
+    .map((s) => `<b>${esc(s.label)}</b>: ${s.emerged.map((e) => (e.isNew ? "<u>" + esc(e.term) + "</u>" : esc(e.term)).toString()).join(", ") || "—"}`)
     .join(" &nbsp;→&nbsp; ");
-  const burstItems = dyn.burst
-    .map((b) => `<li>${esc(b.term)} — <b style="color:#16a34a;">${b.isNew ? "BARU" : "+" + b.pct + "%"}</b></li>`)
+  const momLabel = (m: { growthPct: number | null; direction: string }) =>
+    m.growthPct === null ? "BARU" : `${m.growthPct > 0 ? "+" : ""}${m.growthPct}%`;
+  const momColor = (d: string) => (d === "up" ? "#16a34a" : d === "down" ? "#dc2626" : "#64748b");
+  const userMomItems = dyn.userMomentum
+    .map((m) => `<li>${esc(m.term)} — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
     .join("");
-  const decliningItems = dyn.declining
-    .map((b) => `<li>${esc(b.term)} — <b style="color:#dc2626;">${b.pct}%</b></li>`)
+  const candItems = dyn.candidates
+    .map((m) => `<li><i>${esc(m.term)}</i> — <b style="color:${momColor(m.direction)};">${momLabel(m)}</b></li>`)
     .join("");
   const centralityRows = dyn.centrality
     .slice(0, 10)
@@ -309,15 +312,15 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   <section>
     <h2>Dinamika Keyword</h2>
     <p class="hint">Berbasis keyword Anda (${esc(dyn.source)}).</p>
-    ${evoFlow ? `<p style="font-size:13px;"><b>Evolution:</b> ${evoFlow}</p>` : ""}
+    ${evoFlow ? `<p style="font-size:13px;"><b>Evolution (kumulatif, garis bawah = baru):</b> ${evoFlow}</p>` : ""}
     <div class="cols">
       <div>
-        <h3 style="font-size:14px;margin:0 0 4px;">Burst (naik tajam)</h3>
-        <ul>${burstItems || "<li class='muted'>—</li>"}</ul>
+        <h3 style="font-size:14px;margin:0 0 4px;">Momentum keyword Anda</h3>
+        <ul>${userMomItems || "<li class='muted'>—</li>"}</ul>
       </div>
       <div>
-        <h3 style="font-size:14px;margin:0 0 4px;">Declining (menurun)</h3>
-        <ul>${decliningItems || "<li class='muted'>—</li>"}</ul>
+        <h3 style="font-size:14px;margin:0 0 4px;">Kandidat lain (korpus)</h3>
+        <ul>${candItems || "<li class='muted'>—</li>"}</ul>
       </div>
     </div>
     <h3 style="font-size:14px;margin:14px 0 4px;">Keyword Centrality</h3>

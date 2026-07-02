@@ -386,22 +386,24 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
       </div>
 
-      {/* Keyword dynamics (evolution, burst, declining, centrality, thematic) — atas keyword Anda */}
-      <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint="Peringkat keyword ANDA di tiap periode waktu — melihat mana yang menguat/melemah dari waktu ke waktu." className="mb-4">
+      {/* Keyword dynamics — semuanya atas keyword Anda + kandidat korpus */}
+      <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint="Perkembangan kumulatif keyword Anda: tiap keyword muncul pada periode puncaknya lalu terus terbawa (A → A+B → A+B+C). [+baru] = muncul di periode itu." className="mb-4">
         {a.dynamics.evolution.length ? (
           <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
             {a.dynamics.evolution.map((s, i) => (
               <div key={i} className="flex items-center gap-2 shrink-0">
-                <div className="glass rounded-xl px-4 py-3 min-w-[160px]">
-                  <div className="text-xs text-violet-300/80 mb-1">{s.label} · {s.docs} doc</div>
-                  {s.top.length ? (
-                    s.top.map((t, j) => (
-                      <div key={j} className={j === 0 ? "text-sm font-semibold text-white" : "text-xs text-slate-400"}>
-                        {t.term} <span className="text-slate-500">({t.count})</span>
-                      </div>
-                    ))
+                <div className="glass rounded-xl px-4 py-3 min-w-[170px] max-w-[220px]">
+                  <div className="text-xs text-violet-300/80 mb-1.5">{s.label} · {s.docs} doc</div>
+                  {s.emerged.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {s.emerged.map((e, j) => (
+                        <span key={j} className={`text-xs rounded-full px-2 py-0.5 ${e.isNew ? "bg-violet-500/25 text-violet-100 border border-violet-400/40 font-medium" : "bg-white/5 text-slate-400 border border-white/10"}`}>
+                          {e.isNew ? "+ " : ""}{e.term}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
-                    <div className="text-xs text-slate-500">tidak ada keyword Anda</div>
+                    <div className="text-xs text-slate-500">—</div>
                   )}
                 </div>
                 {i < a.dynamics.evolution.length - 1 && <ChevronDown className="w-5 h-5 text-slate-600 -rotate-90 shrink-0" />}
@@ -413,70 +415,66 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         )}
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Burst Detection" icon={<TrendingUp className="w-4 h-4" />} hint="Keyword Anda yang melonjak populer di paruh terbaru (burst sederhana ala Kleinberg). Selaras dgn Emerging di Section 1.">
-          {a.dynamics.burst.length ? (
-            <ul className="space-y-1.5 mt-1">
-              {a.dynamics.burst.map((b, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                  <span className="text-slate-200">{b.term}</span>
-                  <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 shrink-0">
-                    {b.isNew ? "BARU" : `+${b.pct}%`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty text="Tidak ada keyword Anda yang melonjak signifikan." />
-          )}
-        </Card>
-        <Card title="Declining Keyword" icon={<TrendingDown className="w-4 h-4" />} hint="Keyword Anda yang proporsinya menurun dari paruh awal ke akhir.">
-          {a.dynamics.declining.length ? (
-            <ul className="space-y-1.5 mt-1">
-              {a.dynamics.declining.map((b, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                  <span className="text-slate-200">{b.term}</span>
-                  <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-rose-500/15 text-rose-300 border border-rose-400/25 shrink-0">
-                    {b.pct}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty text="Tidak ada keyword Anda yang menurun tajam." />
-          )}
-        </Card>
-      </div>
+      <Card title="Momentum Keyword — Burst & Declining" icon={<TrendingUp className="w-4 h-4" />} hint="Perubahan proporsi tiap keyword (paruh awal → akhir, pendekatan Kleinberg burst). Hijau ▲ = burst (naik), merah ▼ = declining (turun). Selaras dengan sinyal Emerging di Section 1." className="mb-4">
+        <div className="grid md:grid-cols-2 gap-x-6 gap-y-4">
+          <div>
+            <div className="text-xs font-semibold text-slate-300 mb-2">Keyword Anda ({a.dynamics.userMomentum.length})</div>
+            {a.dynamics.userMomentum.length ? (
+              <ul className="space-y-1.5">
+                {a.dynamics.userMomentum.map((m, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                    <span className="text-slate-200 flex items-center gap-1.5">
+                      <MomIcon dir={m.direction} /> {m.term}
+                    </span>
+                    <MomBadge m={m} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty text="Butuh variasi tahun untuk menghitung momentum." />
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-slate-300 mb-2">Kandidat lain dari korpus ({a.dynamics.candidates.length})</div>
+            {a.dynamics.candidates.length ? (
+              <ul className="space-y-1.5">
+                {a.dynamics.candidates.map((m, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                    <span className="text-slate-300 italic flex items-center gap-1.5">
+                      <MomIcon dir={m.direction} /> {m.term}
+                    </span>
+                    <MomBadge m={m} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="h-full grid place-items-center text-slate-500 text-xs py-6">Tidak ada kandidat menonjol di korpus.</div>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mt-3">Kandidat = istilah lain di korpus (bukan keyword Anda) yang sedang naik/turun tajam — pertimbangkan menambahkannya sebagai keyword.</p>
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Keyword Centrality" icon={<Share2 className="w-4 h-4" />} hint="Keyword Anda yang paling sentral dalam jaringan co-occurrence (sama dgn matriks Section 1).">
+        <Card title="Keyword Centrality" icon={<Share2 className="w-4 h-4" />} hint="Keyword Anda paling sentral di jaringan co-occurrence (matriks sama dgn Section 1). Bar = Eigenvector (kepentingan utama).">
           {a.dynamics.centrality.length ? (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-400 border-b border-white/10">
-                      <th className="py-1.5 pr-2 font-medium">Keyword</th>
-                      <th className="py-1.5 px-2 font-medium text-right">Degree</th>
-                      <th className="py-1.5 px-2 font-medium text-right">Betweenness</th>
-                      <th className="py-1.5 pl-2 font-medium text-right">Eigenvector</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {a.dynamics.centrality.map((c, i) => (
-                      <tr key={i} className="border-b border-white/5">
-                        <td className="py-1.5 pr-2 text-slate-200">{c.term}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.degree}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.betweenness}</td>
-                        <td className="py-1.5 pl-2 text-right tabular-nums text-violet-300 font-medium">{c.eigenvector}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-2 mb-3">
+                {a.dynamics.centrality.map((c, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className="text-slate-200">{c.term}</span>
+                      <span className="text-slate-400 tabular-nums">deg {c.degree} · betw {c.betweenness} · eig {c.eigenvector}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${c.eigenvector * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="text-xs text-slate-500 mt-2.5 space-y-1">
+              <div className="text-xs text-slate-500 space-y-1 pt-2 border-t border-white/10">
                 <p><b className="text-slate-400">Degree</b> — berapa banyak keyword lain yang pernah digabung dengannya (0–1).</p>
-                <p><b className="text-slate-400">Betweenness</b> — seberapa sering jadi "jembatan" penghubung antar keyword (0 = bukan jembatan; wajar kecil di jaringan kecil).</p>
+                <p><b className="text-slate-400">Betweenness</b> — seberapa sering jadi "jembatan" antar keyword (0 = bukan jembatan; wajar kecil di jaringan kecil).</p>
                 <p><b className="text-slate-400">Eigenvector</b> — terhubung ke keyword yang juga penting (1 = paling sentral).</p>
               </div>
             </>
@@ -484,7 +482,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
             <Empty />
           )}
         </Card>
-        <Card title="Thematic Map (Quadrant)" icon={<LayoutGrid className="w-4 h-4" />} hint="Motor (penting & matang), Basic (penting, belum matang), Niche (matang, terisolasi), Emerging/Declining (baru/menurun).">
+        <Card title="Thematic Map (Quadrant)" icon={<LayoutGrid className="w-4 h-4" />} hint="Motor (penting & matang), Basic (penting, belum matang), Niche (matang, terisolasi), Emerging/Declining (baru/menurun). Termasuk kandidat korpus; ▲/▼ = momentum.">
           {a.dynamics.thematic.length ? <QuadrantMap points={a.dynamics.thematic} /> : <Empty text="Butuh minimal 2 keyword dengan co-occurrence." />}
         </Card>
       </div>
@@ -799,6 +797,24 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
       })}
     </div>
   );
+}
+
+function MomIcon({ dir }: { dir: string }) {
+  if (dir === "up") return <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+  if (dir === "down") return <TrendingDown className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
+  return <span className="w-3.5 text-center text-slate-500 shrink-0">·</span>;
+}
+
+function MomBadge({ m }: { m: { growthPct: number | null; direction: string } }) {
+  const up = m.direction === "up";
+  const down = m.direction === "down";
+  const label = m.growthPct === null ? "BARU" : `${m.growthPct > 0 ? "+" : ""}${m.growthPct}%`;
+  const cls = up
+    ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/25"
+    : down
+    ? "bg-rose-500/15 text-rose-300 border-rose-400/25"
+    : "bg-white/5 text-slate-400 border-white/10";
+  return <span className={`text-xs font-semibold rounded-full px-2 py-0.5 border shrink-0 ${cls}`}>{label}</span>;
 }
 
 function DirTag({ dir }: { dir: "naik" | "turun" | "netral" }) {
