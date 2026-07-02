@@ -11,17 +11,23 @@ import {
   FileDown,
   Gauge,
   Info,
+  Layers,
   LayoutGrid,
   Lightbulb,
+  ListChecks,
   Loader2,
   Mail,
   Network,
   Pencil,
+  Quote,
+  Scale,
   SlidersHorizontal,
   RotateCcw,
   Send,
   Share2,
+  Star,
   Target,
+  Telescope,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -47,7 +53,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const a = useMemo(() => runAnalysis(data.records, keywords, judul), [data.records, keywords, judul]);
+  const a = useMemo(() => runAnalysis(data.records, keywords, judul, topik), [data.records, keywords, judul, topik]);
 
   // Merge corpus-total and keyword-relevant counts per year for comparison.
   const yearTrend = useMemo(() => {
@@ -377,14 +383,6 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}
         </Card>
       </div>
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Penulis Paling Produktif" hint="Klik nama penulis untuk melihat daftar paper & jurnalnya.">
-          {a.authorsDetail.length ? <DrillList groups={a.authorsDetail} showSource /> : <Empty />}
-        </Card>
-        <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
-          {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
-        </Card>
-      </div>
 
       {/* Keyword dynamics — semuanya atas keyword Anda + kandidat korpus */}
       <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint="Perkembangan kumulatif keyword Anda: tiap keyword muncul pada periode puncaknya lalu terus terbawa (A → A+B → A+B+C). [+baru] = muncul di periode itu." className="mb-4">
@@ -502,6 +500,16 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
       </div>
 
+      {/* Bibliometrik: penulis & sumber (ditaruh di akhir Section 2) */}
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Penulis Paling Produktif" hint="Klik nama penulis untuk melihat daftar paper & jurnalnya.">
+          {a.authorsDetail.length ? <DrillList groups={a.authorsDetail} showSource /> : <Empty />}
+        </Card>
+        <Card title="Sumber / Jurnal Teratas" hint="Klik nama jurnal untuk melihat daftar paper yang terbit di sana.">
+          {a.sourcesDetail.length ? <DrillList groups={a.sourcesDetail} /> : <Empty />}
+        </Card>
+      </div>
+
       {/* ===== Section 3: Identifikasi Gap ===== */}
       <SectionHeader
         n={3}
@@ -556,6 +564,82 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </Card>
         )}
       </div>
+
+      {/* Gap Classification */}
+      <Card title="Gap Classification" icon={<Layers className="w-4 h-4" />} hint="Jenis gap yang tersirat di abstrak paper relevan (10 kategori). Bintang = severity berdasarkan berapa banyak paper menyinggungnya." className="mb-4">
+        {a.gaps.classification.length ? (
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+            {a.gaps.classification.map((g) => (
+              <div key={g.key} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                <span className="text-slate-200">{g.name}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <Stars n={g.stars} />
+                  <span className="text-xs text-slate-500 tabular-nums w-14 text-right">{g.count} paper</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="Tidak ada penanda jenis gap terdeteksi di abstrak relevan." />
+        )}
+        {a.gaps.classification[0]?.examples.length ? (
+          <div className="mt-3 text-xs text-slate-400">
+            <span className="text-slate-500">Contoh ({a.gaps.classification[0].name}):</span>{" "}
+            <a href={a.gaps.classification[0].examples[0].url || undefined} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+              “{a.gaps.classification[0].examples[0].sentence}”
+            </a>
+          </div>
+        ) : null}
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        {/* Gap Evidence */}
+        <Card title="Gap Evidence" icon={<Quote className="w-4 h-4" />} hint={`${a.gaps.gapEvidence.count} paper menyatakan gap/kebutuhan riset secara eksplisit. Klik untuk buka sumbernya.`}>
+          {a.gaps.gapEvidence.items.length ? (
+            <ul className="space-y-1.5 mt-1">
+              {a.gaps.gapEvidence.items.map((e, i) => (
+                <EvidenceItem key={i} e={e} />
+              ))}
+            </ul>
+          ) : (
+            <Empty text="Tidak ada pernyataan gap eksplisit terdeteksi." />
+          )}
+        </Card>
+
+        {/* Contradictory Findings */}
+        <Card title="Contradictory Findings" icon={<Scale className="w-4 h-4" />} hint={`Kontroversi hasil pada "${a.gaps.contradiction.topic}": klaim positif vs negatif dari abstrak.`}>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-3 text-center">
+              <div className="text-2xl font-bold text-emerald-300">{a.gaps.contradiction.positiveCount}</div>
+              <div className="text-xs text-emerald-200/80">paper: efektif/positif</div>
+            </div>
+            <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-3 text-center">
+              <div className="text-2xl font-bold text-rose-300">{a.gaps.contradiction.negativeCount}</div>
+              <div className="text-xs text-rose-200/80">paper: tidak efektif/negatif</div>
+            </div>
+          </div>
+          {a.gaps.contradiction.positiveCount >= 2 && a.gaps.contradiction.negativeCount >= 2 ? (
+            <div className="text-xs bg-amber-500/10 border border-amber-500/25 text-amber-200 rounded-lg px-3 py-2 mb-2">⚑ Terindikasi <b>research controversy</b> — hasil bertentangan, layak diteliti lebih lanjut.</div>
+          ) : (
+            <p className="text-xs text-slate-500 mb-2">Belum cukup bukti dua arah untuk menyebut kontroversi.</p>
+          )}
+          {a.gaps.contradiction.negativeExamples[0] && (
+            <div className="text-xs text-slate-400">
+              <span className="text-rose-300">Contra:</span>{" "}
+              <a href={a.gaps.contradiction.negativeExamples[0].url || undefined} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">“{a.gaps.contradiction.negativeExamples[0].sentence}”</a>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Future Research Extraction */}
+      <Card title="Future Research Extraction" icon={<Telescope className="w-4 h-4" />} hint="Rangkuman langsung dari abstrak paper relevan: Future Work, Limitation, Recommendation." className="mb-4">
+        <div className="grid md:grid-cols-3 gap-x-5 gap-y-3">
+          <FutureCol icon={<Telescope className="w-3.5 h-3.5" />} label="Future Work" group={a.gaps.future.futureWork} color="text-violet-300" />
+          <FutureCol icon={<TriangleAlert className="w-3.5 h-3.5" />} label="Limitations" group={a.gaps.future.limitations} color="text-amber-300" />
+          <FutureCol icon={<ListChecks className="w-3.5 h-3.5" />} label="Recommendations" group={a.gaps.future.recommendations} color="text-emerald-300" />
+        </div>
+      </Card>
 
       {/* ===== Section 4: Analisis Novelty ===== */}
       <SectionHeader
@@ -810,6 +894,53 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function Stars({ n }: { n: number }) {
+  return (
+    <span className="inline-flex items-center" title={`Severity ${n}/5`}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star key={i} className="w-3.5 h-3.5" style={{ fill: i < n ? "#fbbf24" : "transparent", color: i < n ? "#fbbf24" : "#475569" }} />
+      ))}
+    </span>
+  );
+}
+
+function EvidenceItem({ e }: { e: { title: string; sentence: string; url: string } }) {
+  return (
+    <li>
+      <a
+        href={e.url || undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`group flex gap-1.5 text-xs leading-relaxed rounded-lg px-2.5 py-1.5 transition ${e.url ? "text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer" : "text-slate-300"}`}
+      >
+        <span>
+          “{e.sentence}” <span className="text-violet-300/70">— {e.title}…</span>
+        </span>
+        {e.url && <ExternalLink className="w-3 h-3 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
+      </a>
+    </li>
+  );
+}
+
+function FutureCol({ icon, label, group, color }: { icon: React.ReactNode; label: string; group: { count: number; items: { title: string; sentence: string; url: string }[] }; color: string }) {
+  return (
+    <div>
+      <div className={`flex items-center gap-1.5 text-xs font-semibold mb-1.5 ${color}`}>
+        {icon} {label} <span className="text-slate-500 font-normal">({group.count})</span>
+      </div>
+      {group.items.length ? (
+        <ul className="space-y-1">
+          {group.items.map((e, i) => (
+            <EvidenceItem key={i} e={e} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-slate-500">—</p>
+      )}
     </div>
   );
 }

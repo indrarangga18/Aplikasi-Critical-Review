@@ -89,6 +89,19 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   const best = a.recommendations[0];
 
+  // Advanced gap analysis
+  const gaps = a.gaps;
+  const gapClassRows = gaps.classification
+    .map((g) => `<tr><td>${esc(g.name)}</td><td>${"★".repeat(g.stars)}${"☆".repeat(5 - g.stars)}</td><td class="num">${g.count}</td></tr>`)
+    .join("");
+  const evList = (items: { title: string; sentence: string; url: string }[]) =>
+    items.map((e) => `<li>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">` : ""}“${esc(e.sentence)}” — ${esc(e.title)}…${e.url ? "</a>" : ""}</li>`).join("");
+  const gapEvItems = evList(gaps.gapEvidence.items);
+  const futureWorkItems = evList(gaps.future.futureWork.items);
+  const limitationItems = evList(gaps.future.limitations.items);
+  const recommendationItems = evList(gaps.future.recommendations.items);
+  const ctr = gaps.contradiction;
+
   // Keyword dynamics
   const dyn = a.dynamics;
   const evoFlow = dyn.evolution
@@ -297,6 +310,34 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
         <ul>${problemSentences || "<li class='muted'>Abstrak kosong.</li>"}</ul>
       </div>
     </div>
+  </section>
+
+  <section>
+    <h2>Gap Classification</h2>
+    <p class="hint">Jenis gap yang tersirat di abstrak paper relevan; bintang = severity (banyaknya paper).</p>
+    <table><thead><tr><th>Jenis gap</th><th>Severity</th><th class="num">Paper</th></tr></thead><tbody>${gapClassRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+  </section>
+
+  <section>
+    <h2>Gap Evidence — pernyataan gap eksplisit (${gaps.gapEvidence.count} paper)</h2>
+    <ul>${gapEvItems || "<li class='muted'>—</li>"}</ul>
+  </section>
+
+  <section>
+    <h2>Future Research Extraction</h2>
+    <div class="cols">
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Future Work (${gaps.future.futureWork.count})</h3><ul>${futureWorkItems || "<li class='muted'>—</li>"}</ul></div>
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Limitations (${gaps.future.limitations.count})</h3><ul>${limitationItems || "<li class='muted'>—</li>"}</ul></div>
+    </div>
+    <h3 style="font-size:14px;margin:12px 0 4px;">Recommendations (${gaps.future.recommendations.count})</h3>
+    <ul>${recommendationItems || "<li class='muted'>—</li>"}</ul>
+  </section>
+
+  <section>
+    <h2>Contradictory Findings — "${esc(ctr.topic)}"</h2>
+    <p class="hint">Klaim positif: <b style="color:#16a34a;">${ctr.positiveCount} paper</b> · Klaim negatif: <b style="color:#dc2626;">${ctr.negativeCount} paper</b>.
+    ${ctr.positiveCount >= 2 && ctr.negativeCount >= 2 ? "<b>⚑ Terindikasi research controversy.</b>" : ""}</p>
+    ${ctr.negativeExamples.length ? `<ul>${evList(ctr.negativeExamples)}</ul>` : ""}
   </section>
 
   <section class="cols">

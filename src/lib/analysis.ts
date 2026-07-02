@@ -1188,6 +1188,130 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
   return { source: "keyword Anda (pencocokan bilingual EN↔ID)", yearT, yearPrev, evolution, userMomentum, candidates, centrality, thematic };
 }
 
+// ---------- Advanced gap analysis (Section 3) ----------
+export interface GapEvidence {
+  title: string;
+  sentence: string;
+  url: string;
+}
+export interface GapClass {
+  key: string;
+  name: string;
+  count: number; // paper yang menyinggung tipe gap ini
+  stars: number; // 0–5 severity
+  examples: GapEvidence[];
+}
+export interface EvidenceGroup {
+  count: number;
+  items: GapEvidence[];
+}
+export interface FutureResearch {
+  futureWork: EvidenceGroup;
+  limitations: EvidenceGroup;
+  recommendations: EvidenceGroup;
+}
+export interface Contradiction {
+  topic: string;
+  positiveCount: number;
+  negativeCount: number;
+  positiveExamples: GapEvidence[];
+  negativeExamples: GapEvidence[];
+}
+export interface GapAnalysis {
+  classification: GapClass[];
+  gapEvidence: EvidenceGroup;
+  future: FutureResearch;
+  contradiction: Contradiction;
+}
+
+const GAP_TYPES: { key: string; name: string; cues: string[] }[] = [
+  { key: "theoretical", name: "Theoretical Gap", cues: ["theoretical", "theory", "conceptual framework", "under-theorized", "theoretical foundation", "teori", "kerangka teori", "landasan teori", "konseptual"] },
+  { key: "methodological", name: "Methodological Gap", cues: ["methodological", "methodology", "research design", "measurement", "validity", "reliability", "metode", "metodologi", "desain penelitian", "pengukuran", "validitas"] },
+  { key: "empirical", name: "Empirical Gap", cues: ["empirical", "empirically", "empirical evidence", "empirical validation", "empiris", "bukti empiris"] },
+  { key: "context", name: "Context Gap", cues: ["in the context of", "specific context", "different context", "contextual", "konteks", "kontekstual"] },
+  { key: "population", name: "Population Gap", cues: ["population", "sample size", "participants", "demographic", "subgroup", "populasi", "sampel", "responden", "partisipan"] },
+  { key: "technology", name: "Technology Gap", cues: ["technological gap", "emerging technology", "new technology", "technological advancement", "state-of-the-art", "teknologi baru", "kemajuan teknologi"] },
+  { key: "temporal", name: "Temporal Gap", cues: ["longitudinal", "over time", "temporal", "outdated", "up to date", "recent years", "time period", "longitudinal study", "seiring waktu", "periode waktu"] },
+  { key: "geographical", name: "Geographical Gap", cues: ["developing countries", "developed countries", "cross-country", "geographic", "geographical", "region", "country-specific", "negara berkembang", "geografis", "lintas negara", "wilayah"] },
+  { key: "policy", name: "Policy Gap", cues: ["policy", "regulation", "regulatory", "governance", "policy gap", "kebijakan", "regulasi", "tata kelola"] },
+  { key: "dataset", name: "Dataset Gap", cues: ["dataset", "data availability", "lack of data", "benchmark", "data scarcity", "labeled data", "kumpulan data", "ketersediaan data", "kelangkaan data"] },
+];
+
+const GAP_STATEMENT_CUES = ["future research", "further research", "future work", "future studies", "future study", "should be investigated", "should be explored", "should be studied", "should be addressed", "remains to be", "has not been", "have not been", "not yet been", "warrant further", "call for", "need for further", "needs to be", "penelitian selanjutnya", "penelitian mendatang", "penelitian lanjutan", "perlu diteliti", "belum diteliti", "masih perlu", "perlu dikaji"];
+const FUTURE_CUES = ["future research", "future work", "future study", "future studies", "further research", "further study", "future direction", "next step", "penelitian selanjutnya", "penelitian mendatang", "riset masa depan", "studi lanjutan", "arah penelitian"];
+const LIMITATION_CUES = ["limitation", "limited to", "this study is limited", "is limited", "a constraint", "shortcoming", "drawback", "keterbatasan", "batasan penelitian", "kelemahan"];
+const RECOMMENDATION_CUES = ["we recommend", "it is recommended", "recommendation", "we suggest", "it is suggested", "should consider", "practitioners should", "disarankan", "rekomendasi", "sebaiknya", "kami menyarankan"];
+const POSITIVE_CUES = ["effective", "effectiveness", "improves", "improvement", "increase", "enhances", "positive effect", "significant effect", "outperform", "beneficial", "efektif", "meningkatkan", "berpengaruh positif", "berdampak positif", "signifikan positif"];
+const NEGATIVE_CUES = ["not effective", "ineffective", "no significant", "not significant", "does not improve", "no effect", "negative effect", "fails to", "no improvement", "limited effect", "tidak efektif", "tidak berpengaruh", "tidak signifikan", "tidak meningkatkan", "kurang efektif"];
+
+function collectByCues(records: RisRecord[], cues: string[], max: number): EvidenceGroup {
+  let count = 0;
+  const items: GapEvidence[] = [];
+  for (const r of records) {
+    const low = r.abstract.toLowerCase();
+    if (!low || !cues.some((c) => low.includes(c))) continue;
+    count++;
+    if (items.length < max) {
+      for (const s of splitSentences(r.abstract)) {
+        if (cues.some((c) => s.toLowerCase().includes(c))) {
+          items.push({ title: r.title.slice(0, 60), sentence: s.trim().slice(0, 240), url: paperUrl(r) });
+          break;
+        }
+      }
+    }
+  }
+  return { count, items };
+}
+
+export function gapAnalysis(matched: RisRecord[], keywords: string[], topik: string): GapAnalysis {
+  const n = matched.length || 1;
+  const classification: GapClass[] = GAP_TYPES.map((g) => {
+    const { count, items } = collectByCues(matched, g.cues, 3);
+    const pct = count / n;
+    const stars = pct >= 0.25 ? 5 : pct >= 0.15 ? 4 : pct >= 0.08 ? 3 : pct >= 0.03 ? 2 : count > 0 ? 1 : 0;
+    return { key: g.key, name: g.name, count, stars, examples: items };
+  })
+    .filter((g) => g.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  const gapEvidence = collectByCues(matched, GAP_STATEMENT_CUES, 8);
+  const future: FutureResearch = {
+    futureWork: collectByCues(matched, FUTURE_CUES, 6),
+    limitations: collectByCues(matched, LIMITATION_CUES, 6),
+    recommendations: collectByCues(matched, RECOMMENDATION_CUES, 6),
+  };
+
+  // Contradictory findings — positive vs negative outcome claims.
+  let positiveCount = 0;
+  let negativeCount = 0;
+  const positiveExamples: GapEvidence[] = [];
+  const negativeExamples: GapEvidence[] = [];
+  for (const r of matched) {
+    const low = r.abstract.toLowerCase();
+    if (!low) continue;
+    const isNeg = NEGATIVE_CUES.some((c) => low.includes(c));
+    const isPos = !isNeg && POSITIVE_CUES.some((c) => low.includes(c));
+    if (isNeg) {
+      negativeCount++;
+      if (negativeExamples.length < 4)
+        for (const s of splitSentences(r.abstract))
+          if (NEGATIVE_CUES.some((c) => s.toLowerCase().includes(c))) { negativeExamples.push({ title: r.title.slice(0, 60), sentence: s.trim().slice(0, 240), url: paperUrl(r) }); break; }
+    } else if (isPos) {
+      positiveCount++;
+      if (positiveExamples.length < 4)
+        for (const s of splitSentences(r.abstract))
+          if (POSITIVE_CUES.some((c) => s.toLowerCase().includes(c))) { positiveExamples.push({ title: r.title.slice(0, 60), sentence: s.trim().slice(0, 240), url: paperUrl(r) }); break; }
+    }
+  }
+
+  return {
+    classification,
+    gapEvidence,
+    future,
+    contradiction: { topic: topik || keywords[0] || "topik ini", positiveCount, negativeCount, positiveExamples, negativeExamples },
+  };
+}
+
 // ---------- Top-level orchestrator ----------
 export interface AnalysisResult {
   quality: Quality;
@@ -1211,9 +1335,10 @@ export interface AnalysisResult {
   venn: VennData;
   titleFit: TitleFit[];
   dynamics: KeywordDynamics;
+  gaps: GapAnalysis;
 }
 
-export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""): AnalysisResult {
+export function runAnalysis(records: RisRecord[], keywords: string[], judul = "", topik = ""): AnalysisResult {
   const matched = matchedRecords(records, keywords);
   const recs = recommendations(records, keywords);
   return {
@@ -1238,5 +1363,6 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     venn: vennDomains(records, keywords),
     titleFit: titleRecommendationFit(judul, recs),
     dynamics: keywordDynamics(records, keywords),
+    gaps: gapAnalysis(matched, keywords, topik),
   };
 }
