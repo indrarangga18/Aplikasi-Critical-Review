@@ -20,12 +20,6 @@ const STOPWORDS = new Set(
   ("a about above after again against all am an and any are aren't as at be because been before being below between both but by can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves").split(" ")
 );
 
-// Generic academic filler removed from title/abstract term extraction so that
-// evolution/burst/centrality surface real topics, not "research/method/study".
-const ACADEMIC_STOP = new Set(
-  ("research study studies method methods methodology methodological result results analysis analyses approach approaches using used use uses based paper papers article articles propose proposed proposes proposing present presents presented presenting novel data dataset datasets review reviews literature case cases effect effects impact impacts toward towards within among findings finding objective objectives aim aims purpose conclusion conclusions showed shows show shown significant significantly respectively however therefore thus also well work works framework frameworks technique techniques application applications performance evaluate evaluated evaluation propose provide provides provided investigate investigated examine examined explore explored develop developed developing developments high low different various several many more most highly compared comparison order due able make makes making thereby herein moreover furthermore whereas although").split(" ")
-);
-
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -938,53 +932,6 @@ export interface KeywordDynamics {
   thematic: ThematicTerm[];
 }
 
-interface TermDoc {
-  year: number | null;
-  terms: Set<string>;
-}
-interface CorpusTerms {
-  vocab: string[];
-  docs: TermDoc[];
-  yearMin: number | null;
-  yearMax: number | null;
-  source: string;
-}
-
-/** Build a per-document term set over the top-N corpus vocabulary
- *  (uses the KW field when present, else unigrams+bigrams from title+abstract). */
-function buildCorpusTerms(records: RisRecord[], topN: number): CorpusTerms {
-  const kwTotal = records.reduce((a, r) => a + r.keywords.length, 0);
-  const useKw = kwTotal >= 12;
-  const rawDocs: TermDoc[] = records.map((r) => {
-    let terms: string[];
-    if (useKw) {
-      terms = r.keywords;
-    } else {
-      const toks = (r.title + " " + r.abstract)
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length > 3 && !STOPWORDS.has(w) && !ACADEMIC_STOP.has(w) && !/^\d+$/.test(w));
-      const grams: string[] = [...toks];
-      for (let i = 0; i < toks.length - 1; i++) grams.push(toks[i] + " " + toks[i + 1]);
-      terms = grams;
-    }
-    return { year: r.year, terms: new Set(terms) };
-  });
-  const freq = new Map<string, number>();
-  for (const d of rawDocs) for (const t of d.terms) freq.set(t, (freq.get(t) || 0) + 1);
-  const vocab = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN).map((x) => x[0]);
-  const vset = new Set(vocab);
-  const docs: TermDoc[] = rawDocs.map((d) => ({ year: d.year, terms: new Set([...d.terms].filter((t) => vset.has(t))) }));
-  const yrs = records.map((r) => r.year).filter((y): y is number => y != null);
-  return {
-    vocab,
-    docs,
-    yearMin: yrs.length ? Math.min(...yrs) : null,
-    yearMax: yrs.length ? Math.max(...yrs) : null,
-    source: useKw ? "field KW korpus" : "judul + abstrak",
-  };
-}
 
 function median(arr: number[]): number {
   if (!arr.length) return 0;
@@ -1032,79 +979,69 @@ function betweennessBrandes(co: number[][]): number[] {
 }
 
 export function keywordDynamics(records: RisRecord[], keywords: string[]): KeywordDynamics {
-  const isUser = (t: string) => keywords.some((k) => containsTerm(t, k));
-  const big = buildCorpusTerms(records, 40);
-  const net = buildCorpusTerms(records, 18);
+  const K = keywords.length;
+  // Presence of EACH user keyword per record (bilingual match, sama seperti Section 1).
+  const present = records.map((r) => ({
+    year: r.year,
+    has: keywords.map((k) => containsTerm(r.searchable, k)),
+  }));
+  const years = records.map((r) => r.year).filter((y): y is number => y != null);
+  const yearMin = years.length ? Math.min(...years) : null;
+  const yearMax = years.length ? Math.max(...years) : null;
 
-  // 1) Evolution — top terms per time period.
+  // 1) Evolution — ranking keyword ANDA per periode waktu.
   const evolution: EvolutionStage[] = [];
-  if (big.yearMin != null && big.yearMax != null && big.yearMax > big.yearMin) {
-    const P = Math.min(4, big.yearMax - big.yearMin + 1);
-    const span = (big.yearMax - big.yearMin + 1) / P;
+  if (yearMin != null && yearMax != null && yearMax > yearMin) {
+    const P = Math.min(4, yearMax - yearMin + 1);
+    const span = (yearMax - yearMin + 1) / P;
     for (let p = 0; p < P; p++) {
-      const lo = Math.round(big.yearMin + p * span);
-      const hi = p === P - 1 ? big.yearMax : Math.round(big.yearMin + (p + 1) * span) - 1;
-      const inP = big.docs.filter((d) => d.year != null && d.year >= lo && d.year <= hi);
-      const f = new Map<string, number>();
-      for (const d of inP) for (const t of d.terms) f.set(t, (f.get(t) || 0) + 1);
-      const top = [...f.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([term, count]) => ({ term, count, isUserKw: isUser(term) }));
-      evolution.push({ label: lo === hi ? `${lo}` : `${lo}–${hi}`, docs: inP.length, top });
+      const lo = Math.round(yearMin + p * span);
+      const hi = p === P - 1 ? yearMax : Math.round(yearMin + (p + 1) * span) - 1;
+      const inP = present.filter((u) => u.year != null && u.year >= lo && u.year <= hi);
+      const counts = keywords
+        .map((k, ki) => ({ term: k, count: inP.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0), isUserKw: true }))
+        .filter((c) => c.count > 0)
+        .sort((a, b) => b.count - a.count);
+      evolution.push({ label: lo === hi ? `${lo}` : `${lo}–${hi}`, docs: inP.length, top: counts.slice(0, 4) });
     }
   }
 
-  // 2) Burst + 3) Declining — early vs recent share of each term.
+  // 2) Burst + 3) Declining — proporsi tiap keyword ANDA di periode awal vs akhir.
   let burst: BurstTerm[] = [];
   let declining: DecliningTerm[] = [];
-  if (big.yearMin != null && big.yearMax != null && big.yearMax > big.yearMin) {
-    const mid = Math.floor((big.yearMin + big.yearMax) / 2);
-    const early = big.docs.filter((d) => d.year != null && d.year <= mid);
-    const late = big.docs.filter((d) => d.year != null && d.year > mid);
+  if (yearMin != null && yearMax != null && yearMax > yearMin) {
+    const mid = Math.floor((yearMin + yearMax) / 2);
+    const early = present.filter((u) => u.year != null && u.year <= mid);
+    const late = present.filter((u) => u.year != null && u.year > mid);
     if (early.length && late.length) {
-      const share = (arr: TermDoc[], t: string) => arr.reduce((a, d) => a + (d.terms.has(t) ? 1 : 0), 0) / arr.length;
-      const rows = big.vocab.map((t) => {
-        const e = share(early, t);
-        const l = share(late, t);
+      const rows = keywords.map((k, ki) => {
+        const e = early.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / early.length;
+        const l = late.reduce((a, u) => a + (u.has[ki] ? 1 : 0), 0) / late.length;
         const g = e > 0 ? ((l - e) / e) * 100 : l > 0 ? Infinity : 0;
-        return { term: t, e, l, g };
+        return { term: k, e, l, g };
       });
       burst = rows
-        .filter((r) => r.l >= 0.03 && (r.g === Infinity || r.g >= 50))
+        .filter((r) => r.l > 0 && (r.g === Infinity || r.g >= 25))
         .sort((a, b) => (b.g === Infinity ? 1e9 : b.g) - (a.g === Infinity ? 1e9 : a.g))
-        .slice(0, 8)
-        .map((r) => ({ term: r.term, pct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), isNew: r.e === 0, isUserKw: isUser(r.term) }));
+        .map((r) => ({ term: r.term, pct: r.g === Infinity ? null : Math.round(r.g), latePct: +(r.l * 100).toFixed(1), isNew: r.e === 0, isUserKw: true }));
       declining = rows
-        .filter((r) => r.e >= 0.03 && r.g !== Infinity && r.g <= -30)
+        .filter((r) => r.e > 0 && r.g !== Infinity && r.g <= -25)
         .sort((a, b) => a.g - b.g)
-        .slice(0, 8)
-        .map((r) => ({ term: r.term, pct: Math.round(r.g), isUserKw: isUser(r.term) }));
+        .map((r) => ({ term: r.term, pct: Math.round(r.g), isUserKw: true }));
     }
   }
 
-  // 4) Centrality + 5) Thematic map — over the co-occurrence network.
-  const { vocab, docs } = net;
-  const V = vocab.length;
-  const idx = new Map(vocab.map((t, i) => [t, i]));
-  const co: number[][] = Array.from({ length: V }, () => new Array(V).fill(0));
-  const freq = new Array(V).fill(0);
-  for (const d of docs) {
-    const present = [...d.terms];
-    for (const t of present) freq[idx.get(t)!]++;
-    for (let a = 0; a < present.length; a++)
-      for (let b = a + 1; b < present.length; b++) {
-        const i = idx.get(present[a])!;
-        const j = idx.get(present[b])!;
-        co[i][j]++;
-        co[j][i]++;
-      }
-  }
-
+  // 4) Centrality + 5) Thematic map — jaringan co-occurrence keyword ANDA
+  // (matriks yang sama dengan Section 1: userCoocMatrix).
+  const co = userCoocMatrix(records, keywords);
   let centrality: CentralityTerm[] = [];
   let thematic: ThematicTerm[] = [];
+  const V = K;
   if (V >= 2) {
     const degree = co.map((row) => row.filter((w) => w > 0).length / (V - 1));
     // eigenvector via power iteration (weighted)
     let x = new Array(V).fill(1 / Math.sqrt(V));
-    for (let it = 0; it < 100; it++) {
+    for (let it = 0; it < 200; it++) {
       const y = new Array(V).fill(0);
       for (let i = 0; i < V; i++) for (let j = 0; j < V; j++) y[i] += co[i][j] * x[j];
       const norm = Math.hypot(...y) || 1;
@@ -1117,12 +1054,11 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     const emax = Math.max(...x.map((v) => Math.abs(v))) || 1;
     const eig = x.map((v) => Math.abs(v) / emax);
     const bet = betweennessBrandes(co);
-    centrality = vocab
-      .map((t, i) => ({ term: t, degree: +degree[i].toFixed(3), betweenness: +bet[i].toFixed(3), eigenvector: +eig[i].toFixed(3), isUserKw: isUser(t) }))
-      .sort((a, b) => b.eigenvector - a.eigenvector)
-      .slice(0, 12);
+    centrality = keywords
+      .map((t, i) => ({ term: t, degree: +degree[i].toFixed(3), betweenness: +bet[i].toFixed(3), eigenvector: +eig[i].toFixed(3), isUserKw: true }))
+      .sort((a, b) => b.eigenvector - a.eigenvector);
 
-    // Thematic map: centrality (external links) vs density (avg internal strength)
+    // Thematic map: centrality (total links) vs density (avg internal strength)
     const cRaw = co.map((row) => row.reduce((a, b) => a + b, 0));
     const dRaw = co.map((row) => {
       const nb = row.filter((w) => w > 0);
@@ -1132,17 +1068,17 @@ export function keywordDynamics(records: RisRecord[], keywords: string[]): Keywo
     const dmax = Math.max(...dRaw, 1);
     const cN = cRaw.map((v) => v / cmax);
     const dN = dRaw.map((v) => v / dmax);
-    const cMed = median(cN);
-    const dMed = median(dN);
-    thematic = vocab.map((t, i) => {
-      const hiC = cN[i] >= cMed;
-      const hiD = dN[i] >= dMed;
+    const cMed = median(cN.filter((v) => v > 0)) || median(cN);
+    const dMed = median(dN.filter((v) => v > 0)) || median(dN);
+    thematic = keywords.map((t, i) => {
+      const hiC = cN[i] >= cMed && cN[i] > 0;
+      const hiD = dN[i] >= dMed && dN[i] > 0;
       const quadrant: ThematicTerm["quadrant"] = hiC && hiD ? "Motor" : !hiC && hiD ? "Niche" : hiC && !hiD ? "Basic" : "Emerging/Declining";
-      return { term: t, centrality: +cN[i].toFixed(3), density: +dN[i].toFixed(3), quadrant, isUserKw: isUser(t) };
+      return { term: t, centrality: +cN[i].toFixed(3), density: +dN[i].toFixed(3), quadrant, isUserKw: true };
     });
   }
 
-  return { source: big.source, evolution, burst, declining, centrality, thematic };
+  return { source: "keyword Anda (pencocokan bilingual EN↔ID)", evolution, burst, declining, centrality, thematic };
 }
 
 // ---------- Top-level orchestrator ----------

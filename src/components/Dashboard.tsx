@@ -386,19 +386,23 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
       </div>
 
-      {/* Keyword dynamics (evolution, burst, declining, centrality, thematic) */}
-      <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint={`Topik dominan per periode waktu. Sumber: ${a.dynamics.source}.`} className="mb-4">
+      {/* Keyword dynamics (evolution, burst, declining, centrality, thematic) — atas keyword Anda */}
+      <Card title="Keyword Evolution" icon={<Workflow className="w-4 h-4" />} hint="Peringkat keyword ANDA di tiap periode waktu — melihat mana yang menguat/melemah dari waktu ke waktu." className="mb-4">
         {a.dynamics.evolution.length ? (
           <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
             {a.dynamics.evolution.map((s, i) => (
               <div key={i} className="flex items-center gap-2 shrink-0">
-                <div className="glass rounded-xl px-4 py-3 min-w-[150px]">
+                <div className="glass rounded-xl px-4 py-3 min-w-[160px]">
                   <div className="text-xs text-violet-300/80 mb-1">{s.label} · {s.docs} doc</div>
-                  {s.top.map((t, j) => (
-                    <div key={j} className={j === 0 ? "text-sm font-semibold text-white" : "text-xs text-slate-400"}>
-                      {t.term}{t.isUserKw && <span className="ml-1 text-violet-300">●</span>} <span className="text-slate-500">({t.count})</span>
-                    </div>
-                  ))}
+                  {s.top.length ? (
+                    s.top.map((t, j) => (
+                      <div key={j} className={j === 0 ? "text-sm font-semibold text-white" : "text-xs text-slate-400"}>
+                        {t.term} <span className="text-slate-500">({t.count})</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-500">tidak ada keyword Anda</div>
+                  )}
                 </div>
                 {i < a.dynamics.evolution.length - 1 && <ChevronDown className="w-5 h-5 text-slate-600 -rotate-90 shrink-0" />}
               </div>
@@ -407,16 +411,15 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         ) : (
           <Empty text="Butuh data tahun yang bervariasi untuk membentuk evolusi." />
         )}
-        <p className="text-xs text-slate-500 mt-2">● = keyword Anda (selaras dengan Section 1).</p>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Burst Detection" icon={<TrendingUp className="w-4 h-4" />} hint="Keyword yang melonjak populer di periode terbaru (burst sederhana ala Kleinberg).">
+        <Card title="Burst Detection" icon={<TrendingUp className="w-4 h-4" />} hint="Keyword Anda yang melonjak populer di paruh terbaru (burst sederhana ala Kleinberg). Selaras dgn Emerging di Section 1.">
           {a.dynamics.burst.length ? (
             <ul className="space-y-1.5 mt-1">
               {a.dynamics.burst.map((b, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                  <span className={b.isUserKw ? "text-white font-medium" : "text-slate-200"}>{b.term}{b.isUserKw && <span className="ml-1 text-violet-300">●</span>}</span>
+                  <span className="text-slate-200">{b.term}</span>
                   <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 shrink-0">
                     {b.isNew ? "BARU" : `+${b.pct}%`}
                   </span>
@@ -424,15 +427,15 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               ))}
             </ul>
           ) : (
-            <Empty text="Tidak ada lonjakan signifikan terdeteksi." />
+            <Empty text="Tidak ada keyword Anda yang melonjak signifikan." />
           )}
         </Card>
-        <Card title="Declining Keyword" icon={<TrendingDown className="w-4 h-4" />} hint="Topik yang mulai ditinggalkan (proporsi menurun dari periode awal ke akhir).">
+        <Card title="Declining Keyword" icon={<TrendingDown className="w-4 h-4" />} hint="Keyword Anda yang proporsinya menurun dari paruh awal ke akhir.">
           {a.dynamics.declining.length ? (
             <ul className="space-y-1.5 mt-1">
               {a.dynamics.declining.map((b, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
-                  <span className={b.isUserKw ? "text-white font-medium" : "text-slate-200"}>{b.term}{b.isUserKw && <span className="ml-1 text-violet-300">●</span>}</span>
+                  <span className="text-slate-200">{b.term}</span>
                   <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-rose-500/15 text-rose-300 border border-rose-400/25 shrink-0">
                     {b.pct}%
                   </span>
@@ -440,42 +443,49 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               ))}
             </ul>
           ) : (
-            <Empty text="Tidak ada topik menurun tajam." />
+            <Empty text="Tidak ada keyword Anda yang menurun tajam." />
           )}
         </Card>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Keyword Centrality" icon={<Share2 className="w-4 h-4" />} hint="Keyword paling penting di jaringan co-occurrence: degree, betweenness, eigenvector (0–1).">
+        <Card title="Keyword Centrality" icon={<Share2 className="w-4 h-4" />} hint="Keyword Anda yang paling sentral dalam jaringan co-occurrence (sama dgn matriks Section 1).">
           {a.dynamics.centrality.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-400 border-b border-white/10">
-                    <th className="py-1.5 pr-2 font-medium">Keyword</th>
-                    <th className="py-1.5 px-2 font-medium text-right" title="Degree centrality">Deg</th>
-                    <th className="py-1.5 px-2 font-medium text-right" title="Betweenness centrality">Betw</th>
-                    <th className="py-1.5 pl-2 font-medium text-right" title="Eigenvector centrality">Eig</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {a.dynamics.centrality.map((c, i) => (
-                    <tr key={i} className="border-b border-white/5">
-                      <td className={`py-1.5 pr-2 ${c.isUserKw ? "text-white font-medium" : "text-slate-200"}`}>{c.term}{c.isUserKw && <span className="ml-1 text-violet-300">●</span>}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.degree}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.betweenness}</td>
-                      <td className="py-1.5 pl-2 text-right tabular-nums text-violet-300 font-medium">{c.eigenvector}</td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-white/10">
+                      <th className="py-1.5 pr-2 font-medium">Keyword</th>
+                      <th className="py-1.5 px-2 font-medium text-right">Degree</th>
+                      <th className="py-1.5 px-2 font-medium text-right">Betweenness</th>
+                      <th className="py-1.5 pl-2 font-medium text-right">Eigenvector</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {a.dynamics.centrality.map((c, i) => (
+                      <tr key={i} className="border-b border-white/5">
+                        <td className="py-1.5 pr-2 text-slate-200">{c.term}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.degree}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{c.betweenness}</td>
+                        <td className="py-1.5 pl-2 text-right tabular-nums text-violet-300 font-medium">{c.eigenvector}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="text-xs text-slate-500 mt-2.5 space-y-1">
+                <p><b className="text-slate-400">Degree</b> — berapa banyak keyword lain yang pernah digabung dengannya (0–1).</p>
+                <p><b className="text-slate-400">Betweenness</b> — seberapa sering jadi "jembatan" penghubung antar keyword (0 = bukan jembatan; wajar kecil di jaringan kecil).</p>
+                <p><b className="text-slate-400">Eigenvector</b> — terhubung ke keyword yang juga penting (1 = paling sentral).</p>
+              </div>
+            </>
           ) : (
             <Empty />
           )}
         </Card>
         <Card title="Thematic Map (Quadrant)" icon={<LayoutGrid className="w-4 h-4" />} hint="Motor (penting & matang), Basic (penting, belum matang), Niche (matang, terisolasi), Emerging/Declining (baru/menurun).">
-          {a.dynamics.thematic.length ? <QuadrantMap points={a.dynamics.thematic} /> : <Empty />}
+          {a.dynamics.thematic.length ? <QuadrantMap points={a.dynamics.thematic} /> : <Empty text="Butuh minimal 2 keyword dengan co-occurrence." />}
         </Card>
       </div>
 

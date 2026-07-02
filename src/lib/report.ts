@@ -102,7 +102,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     .join("");
   const centralityRows = dyn.centrality
     .slice(0, 10)
-    .map((c) => `<tr><td>${esc(c.term)}${c.isUserKw ? " ●" : ""}</td><td class="num">${c.degree}</td><td class="num">${c.betweenness}</td><td class="num">${c.eigenvector}</td></tr>`)
+    .map((c) => `<tr><td>${esc(c.term)}</td><td class="num">${c.degree}</td><td class="num">${c.betweenness}</td><td class="num">${c.eigenvector}</td></tr>`)
     .join("");
   const quadGroups = ["Motor", "Basic", "Niche", "Emerging/Declining"]
     .map((q) => {
@@ -308,7 +308,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   <section>
     <h2>Dinamika Keyword</h2>
-    <p class="hint">Sumber: ${esc(dyn.source)}. ● = keyword Anda.</p>
+    <p class="hint">Berbasis keyword Anda (${esc(dyn.source)}).</p>
     ${evoFlow ? `<p style="font-size:13px;"><b>Evolution:</b> ${evoFlow}</p>` : ""}
     <div class="cols">
       <div>

@@ -352,7 +352,7 @@ const QUAD_COLOR: Record<string, string> = {
 
 export function QuadrantMap({
   points,
-  height = 360,
+  height = 420,
 }: {
   points: { term: string; centrality: number; density: number; quadrant: string; isUserKw: boolean }[];
   height?: number;
@@ -365,42 +365,46 @@ export function QuadrantMap({
   };
   const cMed = med(points.map((p) => p.centrality));
   const dMed = med(points.map((p) => p.density));
-  const xL = `${cMed * 100}%`;
-  const yL = `${(1 - dMed) * 100}%`;
-
+  // Map [0,1] into [10%,90%] so edge points/labels aren't clipped.
+  const px = (v: number) => 10 + v * 80;
+  // Alternate label side to reduce overlap when points share a spot.
   return (
     <div>
       <div className="relative rounded-xl border border-white/10 overflow-hidden" style={{ height }}>
-        {/* quadrant tints */}
         <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
           <div style={{ background: "rgba(192,132,252,.06)" }} />
           <div style={{ background: "rgba(52,211,153,.07)" }} />
           <div style={{ background: "rgba(251,191,36,.06)" }} />
           <div style={{ background: "rgba(96,165,250,.06)" }} />
         </div>
-        {/* median crosshair */}
-        <div className="absolute top-0 bottom-0 border-l border-dashed border-white/15" style={{ left: xL }} />
-        <div className="absolute left-0 right-0 border-t border-dashed border-white/15" style={{ top: yL }} />
-        {/* quadrant labels */}
+        <div className="absolute top-0 bottom-0 border-l border-dashed border-white/15" style={{ left: `${px(cMed)}%` }} />
+        <div className="absolute left-0 right-0 border-t border-dashed border-white/15" style={{ top: `${100 - px(dMed)}%` }} />
         <span className="absolute top-1.5 right-2 text-[10px] font-semibold text-emerald-300/80">Motor</span>
         <span className="absolute top-1.5 left-2 text-[10px] font-semibold text-violet-300/80">Niche</span>
         <span className="absolute bottom-1.5 right-2 text-[10px] font-semibold text-blue-300/80">Basic</span>
         <span className="absolute bottom-1.5 left-2 text-[10px] font-semibold text-amber-300/80">Emerging/Declining</span>
-        {/* points */}
-        {points.map((p, i) => (
-          <div
-            key={i}
-            className="absolute -translate-x-1/2 translate-y-1/2 flex flex-col items-center"
-            style={{ left: `${p.centrality * 100}%`, bottom: `${p.density * 100}%` }}
-            title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density})`}
-          >
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8", outline: p.isUserKw ? "2px solid #fff" : "none" }} />
-            <span className={`text-[9px] mt-0.5 max-w-[80px] truncate ${p.isUserKw ? "text-white font-semibold" : "text-slate-400"}`}>{p.term}</span>
-          </div>
-        ))}
+        {points.map((p, i) => {
+          const rightHalf = px(p.centrality) > 55;
+          return (
+            <div
+              key={i}
+              className="absolute flex items-center gap-1"
+              style={{
+                left: `${px(p.centrality)}%`,
+                bottom: `${px(p.density)}%`,
+                transform: `translate(${rightHalf ? "-100%" : "0"}, 50%)`,
+                flexDirection: rightHalf ? "row-reverse" : "row",
+              }}
+              title={`${p.term} — ${p.quadrant} (centrality ${p.centrality}, density ${p.density})`}
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-black/30" style={{ background: QUAD_COLOR[p.quadrant] || "#94a3b8" }} />
+              <span className="text-[10px] text-slate-200 whitespace-nowrap bg-black/40 rounded px-1">{p.term}</span>
+            </div>
+          );
+        })}
       </div>
       <div className="flex justify-between text-[10px] text-slate-500 mt-1 px-1">
-        <span>← Centrality / relevansi →</span>
+        <span>← Centrality / relevansi (keterhubungan) →</span>
         <span>↑ Density / perkembangan</span>
       </div>
     </div>
