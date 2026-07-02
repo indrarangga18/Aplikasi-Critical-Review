@@ -37,9 +37,14 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
 
   const noveltyRows = a.novelty.components
     .map(
-      (c) => `<tr><td>${esc(c.name)}</td><td class="num">${c.value}</td><td class="num">${c.weight}</td><td class="num">${c.contribution}</td></tr>`
+      (c) =>
+        `<tr><td><b>${esc(c.name)}</b><div style="font-size:11px;color:#64748b;">${esc(c.measures)}<br/>${esc(c.detail)} → <span style="color:#6366f1;">${esc(c.interpretation)}</span></div></td><td class="num">${c.value}</td><td class="num">${c.weight}</td><td class="num">${c.contribution}</td></tr>`
     )
     .join("");
+
+  const noveltyFormula = a.novelty.components
+    .map((c) => `${c.weight}×${c.value}`)
+    .join(" + ");
 
   const recRows = a.recommendations
     .slice(0, 8)
@@ -172,15 +177,16 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   <div class="novelty">
     <div class="ring" style="--v:${a.novelty.score}"><b>${a.novelty.score}</b></div>
     <div>
-      <h2 style="margin:0 0 6px;">Novelty Score (heuristik): ${a.novelty.score} / 100</h2>
-      <p class="hint" style="margin:0;">Referensi yang menggabungkan SEMUA ${meta.keywords.length} keyword: <b>${a.novelty.nAll}</b>. Skor tinggi = kombinasi keyword jarang muncul bersama (cenderung lebih baru).</p>
+      <h2 style="margin:0 0 6px;">Novelty Score (heuristik): ${a.novelty.score} / 100 — <span style="color:${noveltyColor};">${esc(a.novelty.level)}</span></h2>
+      <p class="hint" style="margin:0 0 4px;">${esc(a.novelty.levelHint)}</p>
+      <p class="hint" style="margin:0;">${a.novelty.nAll} dari ${a.novelty.totalRefs} referensi memuat SEMUA ${a.novelty.keywordCount} keyword • ${a.novelty.zeroPairs}/${a.novelty.totalPairs} pasangan belum digabung • rata-rata emerging ${a.novelty.emergingMean >= 0 ? "+" : ""}${a.novelty.emergingMean}.</p>
     </div>
   </div>
 
   <section>
     <h2>Rincian Novelty Score</h2>
-    <p class="hint">Bobot dipilih manual. Gunakan untuk membandingkan alternatif keyword, bukan klaim ilmiah baku.</p>
-    <table><thead><tr><th>Komponen</th><th class="num">Nilai 0–1</th><th class="num">Bobot</th><th class="num">Kontribusi</th></tr></thead><tbody>${noveltyRows}</tbody></table>
+    <p class="hint">Rumus: Skor = 100 × (${noveltyFormula}) = <b>${a.novelty.score}</b>. Bobot dipilih manual — untuk membandingkan alternatif keyword, bukan klaim ilmiah baku.</p>
+    <table><thead><tr><th>Komponen &amp; makna</th><th class="num">Nilai 0–1</th><th class="num">Bobot</th><th class="num">Kontribusi</th></tr></thead><tbody>${noveltyRows}</tbody></table>
   </section>
 
   <section>

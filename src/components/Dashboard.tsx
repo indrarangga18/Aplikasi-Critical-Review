@@ -229,23 +229,52 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           <div className="flex items-center gap-1.5 text-sm font-medium">
             <Award className="w-4 h-4 text-violet-300" /> Novelty Score
           </div>
-          <p className="text-xs text-slate-400 mt-1">{a.novelty.nAll} referensi memuat SEMUA keyword</p>
+          <span
+            className="mt-1.5 text-xs font-semibold rounded-full px-2.5 py-0.5"
+            style={{ color: noveltyColor, background: `${noveltyColor}1f`, border: `1px solid ${noveltyColor}55` }}
+          >
+            Novelty {a.novelty.level}
+          </span>
+          <p className="text-xs text-slate-400 mt-2 leading-relaxed">{a.novelty.levelHint}</p>
         </Card>
 
         <Card className="lg:col-span-2" title="Rincian Novelty Score" icon={<BarChart3 className="w-4 h-4" />} hint="Bobot dipilih manual — alat bandingkan alternatif, bukan metrik baku.">
-          <div className="space-y-3 mt-2">
+          {/* Formula with real numbers plugged in */}
+          <div className="text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mb-4 leading-relaxed">
+            <span className="text-slate-300 font-medium">Rumus:</span> Skor = 100 × (
+            {a.novelty.components.map((c, i) => (
+              <span key={c.name}>
+                {i > 0 && " + "}
+                <span className="text-violet-300">{c.weight}</span>×{c.value}
+              </span>
+            ))}
+            ) = <span className="text-white font-semibold">{a.novelty.score}</span>
+          </div>
+
+          <div className="space-y-4">
             {a.novelty.components.map((c) => (
               <div key={c.name}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-300">{c.name}</span>
-                  <span className="text-slate-400">{c.contribution} poin · bobot {c.weight}</span>
+                <div className="flex justify-between items-baseline mb-0.5">
+                  <span className="text-sm text-slate-200 font-medium">{c.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0 ml-2">
+                    +{c.contribution} poin · bobot {c.weight} · nilai {c.value}
+                  </span>
                 </div>
+                <p className="text-xs text-slate-500 mb-1.5">{c.measures}</p>
                 <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
                   <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${c.value * 100}%` }} />
+                </div>
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1.5 text-xs">
+                  <span className="text-slate-400">{c.detail}</span>
+                  <span className="text-violet-300">→ {c.interpretation}</span>
                 </div>
               </div>
             ))}
           </div>
+
+          <p className="text-xs text-slate-500 mt-4 pt-3 border-t border-white/10">
+            Nilai tiap komponen dinormalisasi ke 0–1, lalu dikali bobotnya (rarity {a.novelty.components[0].weight}, pair-gap {a.novelty.components[1].weight}, emerging {a.novelty.components[2].weight}) dan dijumlahkan × 100.
+          </p>
         </Card>
       </div>
 
