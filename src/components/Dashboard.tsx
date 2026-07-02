@@ -12,27 +12,60 @@ import {
   Loader2,
   Mail,
   Network,
+  Pencil,
   RotateCcw,
   Send,
   Target,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import { runAnalysis } from "@/lib/analysis";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, FitScatter, GroupedBar, HBar, Heatmap, TrendLine, Venn, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
-  const a = useMemo(() => runAnalysis(data.records, data.keywords, data.judul), [data]);
+  // Editable inputs — changing these re-runs the analysis automatically.
+  const [judul, setJudul] = useState(data.judul);
+  const [topik, setTopik] = useState(data.topik);
+  const [keywords, setKeywords] = useState<string[]>(data.keywords);
+
+  const [editing, setEditing] = useState(false);
+  const [judulDraft, setJudulDraft] = useState(data.judul);
+  const [topikDraft, setTopikDraft] = useState(data.topik);
+  const [kwDraft, setKwDraft] = useState(data.keywords.join(", "));
+
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const a = useMemo(() => runAnalysis(data.records, keywords, judul), [data.records, keywords, judul]);
+
+  const draftKeywords = Array.from(
+    new Set(kwDraft.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean))
+  );
+  const draftValid = judulDraft.trim().length > 0 && draftKeywords.length >= 5 && draftKeywords.length <= 10;
+
+  const openEdit = () => {
+    setJudulDraft(judul);
+    setTopikDraft(topik);
+    setKwDraft(keywords.join(", "));
+    setEditing(true);
+  };
+  const applyEdit = () => {
+    if (!draftValid) return;
+    setJudul(judulDraft.trim());
+    setTopik(topikDraft.trim());
+    setKeywords(draftKeywords);
+    setEditing(false);
+    setToast(null);
+  };
 
   const meta = {
     name: data.name,
     email: data.email,
-    judul: data.judul,
-    topik: data.topik,
-    keywords: data.keywords,
+    judul,
+    topik,
+    keywords,
     filename: data.filename,
   };
 
@@ -82,12 +115,15 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div>
           <p className="text-xs uppercase tracking-wide text-violet-300/80 mb-1">Laporan Critical Review</p>
-          <h1 className="text-2xl sm:text-3xl font-bold">{data.judul || "(tanpa judul)"}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">{judul || "(tanpa judul)"}</h1>
           <p className="text-slate-400 text-sm mt-1">
-            {data.topik} • {a.totalCount} referensi • {data.name}
+            {topik} • {a.totalCount} referensi • {data.name}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={openEdit} className="btn-secondary">
+            <Pencil className="w-4 h-4" /> Edit input
+          </button>
           <button onClick={downloadPdf} className="btn-secondary">
             <FileDown className="w-4 h-4" /> Unduh PDF
           </button>
@@ -100,6 +136,47 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </button>
         </div>
       </div>
+
+      {editing && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="glass-strong rounded-2xl p-5 mb-6 overflow-hidden"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-white flex items-center gap-2"><Pencil className="w-4 h-4 text-violet-300" /> Ubah judul, topik & keyword</h3>
+            <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-white transition"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="text-sm text-slate-300 mb-1.5 block">Judul penelitian</span>
+              <input className={editInput} value={judulDraft} onChange={(e) => setJudulDraft(e.target.value)} placeholder="Judul penelitian Anda" />
+            </label>
+            <label className="block">
+              <span className="text-sm text-slate-300 mb-1.5 block">Topik / area</span>
+              <input className={editInput} value={topikDraft} onChange={(e) => setTopikDraft(e.target.value)} placeholder="mis. Medical AI" />
+            </label>
+            <label className="block">
+              <span className="text-sm text-slate-300 mb-1.5 block">Keyword (pisahkan koma, 5–10)</span>
+              <input className={editInput} value={kwDraft} onChange={(e) => setKwDraft(e.target.value)} placeholder="kata1, kata2, ..." />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {draftKeywords.map((k) => (
+              <span key={k} className="text-xs bg-violet-500/20 text-violet-200 border border-violet-400/20 rounded-full px-2.5 py-0.5">{k}</span>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mt-4">
+            <span className={`text-xs ${draftValid ? "text-emerald-300" : "text-slate-400"}`}>
+              {draftKeywords.length} keyword unik {draftKeywords.length < 5 ? "(minimal 5)" : draftKeywords.length > 10 ? "(maksimal 10)" : "✓"}
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => setEditing(false)} className="btn-secondary">Batal</button>
+              <button onClick={applyEdit} disabled={!draftValid} className="btn-primary">Terapkan & Analisis Ulang</button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {toast && (
         <motion.div
@@ -160,7 +237,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
 
       {/* Recommendations */}
       <Card title="Rekomendasi Kombinasi Topik" icon={<Lightbulb className="w-4 h-4" />} hint="Pasangan keyword jarang digabung namun sedang naik daun = kandidat celah riset." className="mb-4">
-        <HBar data={recData} height={Math.max(200, recData.length * 34)} color="#c084fc" />
+        <HBar data={recData} height={Math.max(220, recData.length * 46)} color="#c084fc" labelWidth={230} />
         {a.recommendations[0] && (
           <div className="mt-3 text-sm bg-violet-500/10 border border-violet-400/20 rounded-xl px-4 py-3">
             Arah paling menjanjikan: <b>{a.recommendations[0].combo}</b> (co-occurrence={a.recommendations[0].cooccurrence}, skor={a.recommendations[0].score}).
@@ -175,7 +252,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           icon={<Combine className="w-4 h-4" />}
           hint={`3 domain tersering: ${a.venn.sets.join(", ")}. Angka = jumlah referensi di tiap wilayah.`}
         >
-          <Venn sets={a.venn.sets} regions={a.venn} />
+          <Venn sets={a.venn.sets} regions={a.venn} totals={a.venn.totals} />
           <div className="mt-3 text-sm bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-4 py-3 text-emerald-100">
             <b>Rekomendasi:</b> {a.venn.recommendation}
           </div>
@@ -184,9 +261,9 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <Card
           title="Kesesuaian Judul ↔ Rekomendasi"
           icon={<Target className="w-4 h-4" />}
-          hint="Sumbu-X: skor rekomendasi. Sumbu-Y: seberapa banyak kata kombinasi sudah ada di judul Anda. Titik kanan-atas = menjanjikan sekaligus sejalan dengan judul."
+          hint="Membandingkan skor rekomendasi vs berapa banyak kata kombinasi yang sudah muncul di judul Anda, per kombinasi."
         >
-          <FitScatter data={a.titleFit.map((f) => ({ combo: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={300} />
+          <FitBars data={a.titleFit.map((f) => ({ label: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={Math.max(240, a.titleFit.length * 46)} />
         </Card>
       </div>
 
@@ -378,6 +455,9 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
     </main>
   );
 }
+
+const editInput =
+  "w-full bg-white/5 border border-white/10 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 outline-none rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-slate-500 transition";
 
 function Kpi({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (

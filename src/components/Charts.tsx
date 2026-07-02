@@ -5,15 +5,13 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
-  ZAxis,
 } from "recharts";
 
 const AXIS = { fontSize: 11, fill: "#94a3b8" };
@@ -32,26 +30,43 @@ function tooltipStyle() {
   };
 }
 
+// Single-line truncating Y-axis tick (prevents long labels from stacking).
+function TruncTick(props: any) {
+  const { x, y, payload, max = 22 } = props;
+  const v = String(payload?.value ?? "");
+  const text = v.length > max ? v.slice(0, max - 1) + "…" : v;
+  return (
+    <text x={x} y={y} dy={4} textAnchor="end" fontSize={11} fill="#94a3b8">
+      <title>{v}</title>
+      {text}
+    </text>
+  );
+}
+
 export function HBar({
   data,
   height = 300,
   color = "#a78bfa",
+  labelWidth = 150,
 }: {
   data: { label: string; value: number }[];
   height?: number;
   color?: string;
+  labelWidth?: number;
 }) {
   const t = tooltipStyle();
+  const max = Math.max(10, Math.floor(labelWidth / 6.2));
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }} barCategoryGap="22%">
         <CartesianGrid horizontal={false} stroke="rgba(255,255,255,.06)" />
         <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis
           type="category"
           dataKey="label"
-          width={130}
-          tick={AXIS}
+          width={labelWidth}
+          tick={(p) => <TruncTick {...p} max={max} />}
+          interval={0}
           axisLine={false}
           tickLine={false}
         />
@@ -229,9 +244,11 @@ export function Heatmap({
 export function Venn({
   sets,
   regions,
+  totals = [],
 }: {
   sets: string[];
   regions: { onlyA: number; onlyB: number; onlyC: number; ab: number; ac: number; bc: number; abc: number };
+  totals?: number[];
 }) {
   const [A, B, C] = sets;
   const r = 78;
@@ -260,49 +277,43 @@ export function Venn({
         {label(192, 150, regions.bc)}
         {label(150, 128, regions.abc)}
       </svg>
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2 text-xs">
-        <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#818cf8" }} />{A}</span>
-        {B && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#f472b6" }} />{B}</span>}
-        {C && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#34d399" }} />{C}</span>}
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-300">
+        <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#818cf8" }} />{A}{totals[0] != null && <span className="text-slate-500">({totals[0]})</span>}</span>
+        {B && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#f472b6" }} />{B}{totals[1] != null && <span className="text-slate-500">({totals[1]})</span>}</span>}
+        {C && <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full inline-block" style={{ background: "#34d399" }} />{C}{totals[2] != null && <span className="text-slate-500">({totals[2]})</span>}</span>}
       </div>
     </div>
   );
 }
 
-// Scatter: recommendation score (x) vs title fit (y).
-export function FitScatter({
+// Grouped horizontal bars: recommendation score vs title coverage per combo.
+export function FitBars({
   data,
   height = 300,
 }: {
-  data: { combo: string; recScore: number; titleFitPct: number }[];
+  data: { label: string; recScore: number; titleFitPct: number }[];
   height?: number;
 }) {
   const t = tooltipStyle();
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ScatterChart margin={{ left: 0, right: 12, top: 12, bottom: 24 }}>
-        <CartesianGrid stroke="rgba(255,255,255,.06)" />
-        <XAxis type="number" dataKey="recScore" name="Skor rekomendasi" tick={AXIS} axisLine={false} tickLine={false} domain={[0, 100]} />
-        <YAxis type="number" dataKey="titleFitPct" name="Kesesuaian judul (%)" tick={AXIS} axisLine={false} tickLine={false} domain={[0, 100]} />
-        <ZAxis range={[120, 120]} />
-        <Tooltip
-          {...t}
-          formatter={(val: number, name: string) => [`${val}${name.includes("Kesesuaian") ? "%" : ""}`, name]}
-          labelFormatter={() => ""}
-          content={({ payload }) => {
-            if (!payload || !payload.length) return null;
-            const p = payload[0].payload as { combo: string; recScore: number; titleFitPct: number };
-            return (
-              <div style={{ background: "rgba(15,23,42,.95)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, color: "#e2e8f0", fontSize: 12, padding: "8px 10px" }}>
-                <div style={{ fontWeight: 600 }}>{p.combo}</div>
-                <div>Skor rekom: {p.recScore}</div>
-                <div>Kesesuaian judul: {p.titleFitPct}%</div>
-              </div>
-            );
-          }}
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }} barCategoryGap="26%">
+        <CartesianGrid horizontal={false} stroke="rgba(255,255,255,.06)" />
+        <XAxis type="number" domain={[0, 100]} tick={AXIS} axisLine={false} tickLine={false} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={170}
+          tick={(p) => <TruncTick {...p} max={26} />}
+          interval={0}
+          axisLine={false}
+          tickLine={false}
         />
-        <Scatter data={data} fill="#c084fc" />
-      </ScatterChart>
+        <Tooltip {...t} formatter={(v: number, n: string) => [n.includes("Kesesuaian") ? `${v}%` : v, n]} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
+        <Bar dataKey="recScore" name="Skor rekomendasi" radius={[0, 5, 5, 0]} fill="#818cf8" />
+        <Bar dataKey="titleFitPct" name="Kesesuaian judul (%)" radius={[0, 5, 5, 0]} fill="#f472b6" />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

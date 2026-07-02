@@ -434,6 +434,7 @@ export function recommendations(records: RisRecord[], keywords: string[]): Recom
 // ---------- Venn: overlapping domains (top 3 keywords) ----------
 export interface VennData {
   sets: string[]; // [A, B, C]
+  totals: number[]; // docFreq of each set (for legend)
   onlyA: number;
   onlyB: number;
   onlyC: number;
@@ -445,8 +446,20 @@ export interface VennData {
 }
 
 export function vennDomains(records: RisRecord[], keywords: string[]): VennData {
-  const counts = keywordCounts(records, keywords).sort((a, b) => b.docFreq - a.docFreq);
-  const sets = counts.slice(0, 3).map((c) => c.keyword);
+  const df = keywordCounts(records, keywords); // aligned to `keywords` order
+  const matrix = userCoocMatrix(records, keywords); // aligned too
+  const involvement = keywords.map((k, i) => ({
+    k,
+    df: df[i].docFreq,
+    co: matrix[i].reduce((a, b) => a + b, 0), // total co-occurrence with the others
+  }));
+  const anyCo = involvement.some((x) => x.co > 0);
+  // Prefer the domains that actually intersect; fall back to raw frequency.
+  const chosen = [...involvement]
+    .sort((a, b) => (anyCo ? b.co - a.co || b.df - a.df : b.df - a.df))
+    .slice(0, 3);
+  const sets = chosen.map((c) => c.k);
+  const totals = chosen.map((c) => c.df);
   const [A, B, C] = sets;
   let onlyA = 0, onlyB = 0, onlyC = 0, ab = 0, ac = 0, bc = 0, abc = 0;
   for (const r of records) {
@@ -475,7 +488,7 @@ export function vennDomains(records: RisRecord[], keywords: string[]): VennData 
     ].sort((x, y) => x.v - y.v);
     recommendation = `Ketiga domain sudah pernah digabung (${abc} referensi). Irisan paling tipis: ${pairs[0].name} (${pairs[0].v} referensi) — memperkuat irisan ini paling menjanjikan untuk kontribusi baru.`;
   }
-  return { sets, onlyA, onlyB, onlyC, ab, ac, bc, abc, recommendation };
+  return { sets, totals, onlyA, onlyB, onlyC, ab, ac, bc, abc, recommendation };
 }
 
 // ---------- Title vs recommendation fit ----------
