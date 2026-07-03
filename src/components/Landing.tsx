@@ -12,7 +12,8 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { parseRis, type RisRecord } from "@/lib/ris";
+import { type RisRecord } from "@/lib/ris";
+import { parseUploadFiles, type ParseResult } from "@/lib/parse";
 import { dataQuality } from "@/lib/analysis";
 
 export interface SessionData {
@@ -34,6 +35,8 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
   const [records, setRecords] = useState<RisRecord[]>([]);
   const [filename, setFilename] = useState("");
   const [parseError, setParseError] = useState("");
+  const [parseLog, setParseLog] = useState<ParseResult["log"]>([]);
+  const [parsing, setParsing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [judul, setJudul] = useState("");
   const [topik, setTopik] = useState("");
@@ -49,34 +52,33 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
     )
   );
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return;
     setParseError("");
+    setParsing(true);
     try {
-      const buf = await file.arrayBuffer();
-      let text: string;
-      try {
-        text = new TextDecoder("utf-8", { fatal: false }).decode(buf).replace(/^﻿/, "");
-      } catch {
-        text = new TextDecoder("latin1").decode(buf);
-      }
-      const recs = parseRis(text);
+      const { records: recs, log } = await parseUploadFiles(files);
+      setParseLog(log);
       if (!recs.length) {
-        setParseError("File terbaca tapi 0 referensi ditemukan. Pastikan ini benar file .ris.");
+        setParseError("Tidak ada referensi ditemukan. Pastikan file berformat .ris/.bib/.nbib (atau ZIP berisi file tersebut).");
         setRecords([]);
+        setFilename("");
         return;
       }
       setRecords(recs);
-      setFilename(file.name);
+      setFilename(files.length === 1 ? files[0].name : `${files.length} file (${recs.length} referensi)`);
     } catch {
-      setParseError("Gagal membaca file. Coba file .ris lain.");
+      setParseError("Gagal membaca file. Coba file lain.");
+    } finally {
+      setParsing(false);
     }
   }, []);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleFile(f);
+    const fs = Array.from(e.dataTransfer.files || []);
+    if (fs.length) handleFiles(fs);
   };
 
   const q = records.length ? dataQuality(records) : null;
@@ -91,7 +93,7 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
     else onStart({ name: name.trim(), email: email.trim(), judul: judul.trim(), topik: topik.trim(), keywords, records, filename });
   };
 
-  const steps = ["Identitas", "Unggah RIS", "Fokus Riset"];
+  const steps = ["Identitas", "Unggah Data", "Fokus Riset"];
 
   return (
     <main className="min-h-screen flex flex-col items-center px-5 py-10 sm:py-16">
@@ -162,17 +164,28 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
                 }`}
               >
                 <UploadCloud className="w-10 h-10 mx-auto mb-3 text-violet-300" />
-                <p className="font-medium">Seret & letakkan file .ris di sini</p>
-                <p className="text-slate-400 text-sm mt-1">atau klik untuk memilih file</p>
+                <p className="font-medium">{parsing ? "Memproses…" : "Seret & letakkan file di sini"}</p>
+                <p className="text-slate-400 text-sm mt-1">atau klik untuk memilih — <b>.ris</b>, <b>.bib</b> (BibTeX), <b>.nbib</b> (PubMed), atau <b>.zip</b> · bisa banyak file sekaligus</p>
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".ris,.txt"
+                  accept=".ris,.txt,.bib,.bibtex,.nbib,.zip"
+                  multiple
                   className="hidden"
-                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                  onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
                 />
               </div>
               {parseError && <p className="text-rose-400 text-sm mt-3">{parseError}</p>}
+              {parseLog.length > 0 && (
+                <div className="mt-3 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 max-h-28 overflow-auto">
+                  {parseLog.map((l, i) => (
+                    <div key={i} className="flex justify-between gap-2">
+                      <span className="truncate">{l.name}</span>
+                      <span className={l.note ? "text-amber-300 shrink-0" : "text-emerald-300 shrink-0"}>{l.note ? l.note : `${l.count} ref`}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {q && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 grid grid-cols-3 gap-3">
                   <Stat label="Referensi" value={q.total} />
