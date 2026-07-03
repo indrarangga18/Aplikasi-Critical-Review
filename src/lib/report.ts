@@ -25,6 +25,108 @@ function bar(value: number, max: number): string {
   return `<div class="bar"><span style="width:${pct}%"></span></div>`;
 }
 
+// ---- Inline visual helpers (print reliably, unlike Recharts SVG) ----
+function hbars(items: { label: string; value: number }[]): string {
+  if (!items.length) return "";
+  const mx = Math.max(...items.map((i) => i.value), 1);
+  return (
+    `<div style="display:flex;flex-direction:column;gap:5px;">` +
+    items
+      .map(
+        (it) => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+      <div style="width:210px;text-align:right;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</div>
+      <div style="flex:1;background:#eef2ff;border-radius:5px;height:14px;"><div style="width:${Math.round((it.value / mx) * 100)}%;height:100%;background:linear-gradient(90deg,#8b5cf6,#ec4899);border-radius:5px;"></div></div>
+      <div style="width:36px;color:#64748b;text-align:right;">${it.value}</div></div>`
+      )
+      .join("") +
+    `</div>`
+  );
+}
+
+function svgLine(pts: { label: string; value: number }[], color = "#7c3aed"): string {
+  if (pts.length < 2) return "";
+  const w = 560, h = 170, pad = 30;
+  const maxV = Math.max(...pts.map((p) => p.value), 1);
+  const xs = pts.map((_, i) => pad + (i * (w - 2 * pad)) / (pts.length - 1));
+  const ys = pts.map((p) => h - pad - (p.value / maxV) * (h - 2 * pad));
+  const path = xs.map((x, i) => `${i ? "L" : "M"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const dots = xs.map((x, i) => `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3" fill="${color}"/>`).join("");
+  const labels = pts.map((p, i) => `<text x="${xs[i].toFixed(1)}" y="${h - 8}" font-size="9" text-anchor="middle" fill="#64748b">${esc(String(p.label))}</text>`).join("");
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:580px;"><path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>${dots}${labels}</svg>`;
+}
+
+function cssHeatmap(labels: string[], matrix: number[][]): string {
+  const off: number[] = [];
+  for (let i = 0; i < matrix.length; i++) for (let j = 0; j < matrix.length; j++) if (i !== j) off.push(matrix[i][j]);
+  const lo = off.length ? Math.min(...off) : 0;
+  const hi = off.length ? Math.max(...off) : 1;
+  const span = hi - lo || 1;
+  const cell = (v: number) => `rgba(124,58,237,${(0.08 + ((v - lo) / span) * 0.85).toFixed(2)})`;
+  let html = `<table style="border-collapse:separate;border-spacing:2px;font-size:9px;"><tr><td></td>`;
+  html += labels.map((l) => `<td style="color:#64748b;text-align:center;">${esc(l.slice(0, 6))}</td>`).join("") + `</tr>`;
+  for (let i = 0; i < matrix.length; i++) {
+    html += `<tr><td style="padding-right:6px;color:#334155;text-align:right;white-space:nowrap;">${esc(labels[i].slice(0, 16))}</td>`;
+    for (let j = 0; j < matrix.length; j++) {
+      const v = matrix[i][j];
+      html += `<td style="width:26px;height:26px;text-align:center;color:#fff;background:${i === j ? "#f1f5f9" : cell(v)};border-radius:3px;">${i !== j && v > 0 ? v : ""}</td>`;
+    }
+    html += `</tr>`;
+  }
+  return html + `</table>`;
+}
+
+function svgRadar(data: { axis: string; value: number }[]): string {
+  const n = data.length;
+  if (n < 3) return "";
+  const cx = 145, cy = 135, R = 95;
+  const pt = (i: number, r: number): [number, number] => {
+    const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
+  };
+  const grid = [0.25, 0.5, 0.75, 1].map((f) => `<polygon points="${data.map((_, i) => pt(i, R * f).map((x) => x.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="#e2e8f0"/>`).join("");
+  const poly = `<polygon points="${data.map((d, i) => pt(i, (R * d.value) / 100).map((x) => x.toFixed(1)).join(",")).join(" ")}" fill="rgba(124,58,237,.28)" stroke="#7c3aed" stroke-width="2"/>`;
+  const labels = data.map((d, i) => { const [x, y] = pt(i, R + 16); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="9" text-anchor="middle" fill="#334155">${esc(d.axis)}</text>`; }).join("");
+  return `<svg viewBox="0 0 290 275" width="270">${grid}${poly}${labels}</svg>`;
+}
+
+function svgVenn(v: { sets: string[]; totals: number[]; onlyA: number; onlyB: number; onlyC: number; ab: number; ac: number; bc: number; abc: number }): string {
+  const [A, B, C] = v.sets;
+  if (!A || !B || !C) return "";
+  const r = 74, cA = [108, 100], cB = [190, 100], cC = [149, 172];
+  const t = (x: number, y: number, val: number) => `<text x="${x}" y="${y}" font-size="13" font-weight="700" text-anchor="middle" fill="#0f172a">${val}</text>`;
+  const legend = `<div style="font-size:11px;color:#334155;margin-top:4px;">🟣 ${esc(A)} (${v.totals[0] ?? 0}) &nbsp; 🩷 ${esc(B)} (${v.totals[1] ?? 0}) &nbsp; 🟢 ${esc(C)} (${v.totals[2] ?? 0})</div>`;
+  return `<svg viewBox="0 0 300 260" width="280"><g style="mix-blend-mode:multiply;">
+    <circle cx="${cA[0]}" cy="${cA[1]}" r="${r}" fill="rgba(129,140,248,.45)"/>
+    <circle cx="${cB[0]}" cy="${cB[1]}" r="${r}" fill="rgba(244,114,182,.4)"/>
+    <circle cx="${cC[0]}" cy="${cC[1]}" r="${r}" fill="rgba(52,211,153,.4)"/></g>
+    ${t(78, 82, v.onlyA)}${t(220, 82, v.onlyB)}${t(149, 210, v.onlyC)}${t(149, 82, v.ab)}${t(108, 148, v.ac)}${t(190, 148, v.bc)}${t(149, 122, v.abc)}
+  </svg>${legend}`;
+}
+
+function svgQuadrant(points: { term: string; centrality: number; density: number; quadrant: string; isUserKw: boolean }[]): string {
+  if (!points.length) return "";
+  const w = 300, h = 300;
+  const px = (val: number) => 30 + val * (w - 60);
+  const py = (val: number) => h - 30 - val * (h - 60);
+  const colors: Record<string, string> = { Motor: "#16a34a", Niche: "#7c3aed", Basic: "#2563eb", "Emerging/Declining": "#d97706" };
+  const dots = points.map((p, i) => `<g><circle cx="${px(p.centrality).toFixed(1)}" cy="${py(p.density).toFixed(1)}" r="9" fill="${colors[p.quadrant] || "#64748b"}"/><text x="${px(p.centrality).toFixed(1)}" y="${(py(p.density) + 3).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">${i + 1}</text></g>`).join("");
+  const legend = `<div style="font-size:10px;color:#334155;columns:2;margin-top:4px;">${points.map((p, i) => `<div>${i + 1}. ${esc(p.term)} <span style="color:#94a3b8;">(${p.quadrant})</span></div>`).join("")}</div>`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="290"><rect x="30" y="30" width="${w - 60}" height="${h - 60}" fill="none" stroke="#e2e8f0"/>
+    <line x1="${w / 2}" y1="30" x2="${w / 2}" y2="${h - 30}" stroke="#e2e8f0" stroke-dasharray="3"/>
+    <line x1="30" y1="${h / 2}" x2="${w - 30}" y2="${h / 2}" stroke="#e2e8f0" stroke-dasharray="3"/>
+    <text x="${w - 34}" y="42" font-size="9" fill="#16a34a" text-anchor="end">Motor</text>
+    <text x="36" y="42" font-size="9" fill="#7c3aed">Niche</text>
+    <text x="${w - 34}" y="${h - 34}" font-size="9" fill="#2563eb" text-anchor="end">Basic</text>
+    <text x="36" y="${h - 34}" font-size="9" fill="#d97706">Emerging</text>${dots}</svg>${legend}`;
+}
+
+function frameworkHtml(fw: { dependent: string; independent: string[]; mediator: string | null; moderator: string | null }): string {
+  const box = (label: string, sub: string, bg: string) => `<div style="display:inline-block;border:1px solid ${bg}66;background:${bg}1a;border-radius:8px;padding:6px 10px;text-align:center;font-size:12px;"><div style="font-size:8px;text-transform:uppercase;color:#64748b;">${sub}</div><b>${esc(label)}</b></div>`;
+  const ind = (fw.independent.length ? fw.independent : ["—"]).map((v) => box(v, "Independent", "#6366f1")).join(" ");
+  return `${fw.moderator ? box(fw.moderator, "Moderator", "#d97706") + '<div style="text-align:center;color:#94a3b8;">↓</div>' : ""}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${ind}<span style="color:#94a3b8;">→</span>${fw.mediator ? box(fw.mediator, "Mediator", "#a855f7") + '<span style="color:#94a3b8;">→</span>' : ""}${box(fw.dependent, "Dependent", "#16a34a")}</div>`;
+}
+
 export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   const q = a.quality;
   const noveltyColor = a.novelty.score >= 66 ? "#16a34a" : a.novelty.score >= 40 ? "#d97706" : "#dc2626";
@@ -116,8 +218,6 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   const varCell = (vs: { name: string; score: number }[]) => vs.map((v) => `${esc(v.name)} (${v.score})`).join(", ");
   const methodRows = dz.methods.map((m) => `<tr><td>${esc(m.name)}</td><td class="num">${m.score}</td><td>${esc(m.reason)}</td></tr>`).join("");
   const dsRows = dz.datasets.map((d) => `<tr><td>${esc(d.name)}</td><td class="num">${d.score}</td><td>${esc(d.reason)}</td></tr>`).join("");
-  const fw = dz.framework;
-  const fwText = `${esc(fw.independent.join(", ") || "—")} → ${fw.mediator ? esc(fw.mediator) + " → " : ""}${esc(fw.dependent)}${fw.moderator ? ` (dimoderasi ${esc(fw.moderator)})` : ""}`;
 
   // Literature Intelligence (Section 6)
   const li = a.litIntel;
@@ -285,21 +385,32 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   <section>
     <h2>Rekomendasi Kombinasi Topik</h2>
     <p class="hint">Skor tinggi = pasangan keyword jarang digabung namun sedang naik daun (kandidat celah riset).</p>
-    <table><thead><tr><th>Kombinasi</th><th class="num">Co-occurrence</th><th class="num">Emerging</th><th class="num">Skor</th></tr></thead><tbody>${recRows}</tbody></table>
+    <div style="margin:10px 0;">${hbars(a.recommendations.slice(0, 10).map((r) => ({ label: r.combo, value: r.score })))}</div>
     ${best ? `<div class="warn">Arah paling menjanjikan: <b>${esc(best.combo)}</b> (co-occurrence=${best.cooccurrence}, skor=${best.score}). Validasi dengan membaca paper aktual.</div>` : ""}
   </section>
 
   <section>
     <h2>Domain yang Beririsan (Venn)</h2>
-    <p class="hint">3 domain tersering: ${esc(v.sets.join(", "))}. Jumlah referensi per wilayah irisan.</p>
-    <table><thead><tr><th>Wilayah</th><th class="num">Referensi</th></tr></thead><tbody>${vennRows}</tbody></table>
+    <p class="hint">3 domain paling beririsan: ${esc(v.sets.join(", "))}. Jumlah referensi per wilayah irisan.</p>
+    <div style="text-align:center;">${svgVenn(v)}</div>
     <div class="warn" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">Rekomendasi: ${esc(v.recommendation)}</div>
   </section>
 
   <section>
     <h2>Novelty Dimension &amp; Innovation Radar</h2>
     <p class="hint">Dari mana potensi kebaruan berasal (0–100). ${esc(nx.radarInsight)}</p>
-    <table><thead><tr><th>Dimensi</th><th class="num">Skor</th><th class="num">Paper</th></tr></thead><tbody>${dimRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+    <div class="cols" style="align-items:center;">
+      <div style="text-align:center;">${svgRadar(nx.radar)}</div>
+      <div><table><thead><tr><th>Dimensi</th><th class="num">Skor</th><th class="num">Paper</th></tr></thead><tbody>${dimRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Peta Co-occurrence &amp; Peluang Keyword</h2>
+    <div class="cols">
+      <div><h3 style="font-size:13px;margin:0 0 6px;">Co-occurrence keyword Anda</h3>${cssHeatmap(meta.keywords, a.opportunity.matrix)}</div>
+      <div><h3 style="font-size:13px;margin:0 0 6px;">Novelty Opportunity Map</h3>${cssHeatmap(nx.oppLabels, nx.oppMatrix)}</div>
+    </div>
   </section>
 
   <section>
@@ -412,7 +523,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <h3 style="font-size:14px;margin:14px 0 4px;">Keyword Centrality</h3>
     <table><thead><tr><th>Keyword</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Eigenvector</th></tr></thead><tbody>${centralityRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
     <h3 style="font-size:14px;margin:14px 0 4px;">Thematic Map (Quadrant)</h3>
-    <table><thead><tr><th>Kuadran</th><th>Keyword</th></tr></thead><tbody>${quadGroups}</tbody></table>
+    <div style="text-align:center;">${svgQuadrant(a.dynamics.thematic)}</div>
   </section>
 
   <section>
@@ -430,7 +541,7 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
       <tr><td><b>Mediator</b></td><td>${varCell(dz.variables.mediator)}</td></tr>
       <tr><td><b>Moderator</b></td><td>${varCell(dz.variables.moderator)}</td></tr>
     </tbody></table>
-    <p style="font-size:13px;margin-top:8px;"><b>Framework:</b> ${fwText}</p>
+    <div style="margin-top:8px;"><b style="font-size:13px;">Framework:</b><div style="margin-top:6px;">${frameworkHtml(dz.framework)}</div></div>
     <div class="cols" style="margin-top:8px;">
       <div><h3 style="font-size:14px;margin:0 0 4px;">Metode</h3><table><tbody>${methodRows}</tbody></table></div>
       <div><h3 style="font-size:14px;margin:0 0 4px;">Dataset</h3><table><tbody>${dsRows}</tbody></table></div>
@@ -441,6 +552,8 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <h2>Literature Intelligence</h2>
     <div class="warn" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;">${esc(li.aiSummary)}</div>
     ${!li.hasCitations ? `<p class="hint">Data sitasi/afiliasi tidak tersedia di RIS ini — pengaruh & kolaborasi memakai proksi.</p>` : ""}
+    <h3 style="font-size:14px;margin:10px 0 4px;">Research Timeline</h3>
+    <div style="text-align:center;">${svgLine(a.publicationsPerYear)}</div>
     <h3 style="font-size:14px;margin:10px 0 4px;">Paper Landmark / Highly Cited</h3>
     <table><thead><tr><th>Paper</th><th class="num">${li.hasCitations ? "Sitasi" : "Skor"}</th></tr></thead><tbody>${landmarkRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
     <div class="cols" style="margin-top:10px;">

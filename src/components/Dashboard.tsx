@@ -198,6 +198,25 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
     w.document.close();
   };
 
+  // Fallback when the server has no email provider configured: download the
+  // report and open the user's mail client pre-addressed (attach the file).
+  const mailtoFallback = () => {
+    const html = buildReportHtml(a, { ...meta, generatedAt: generatedAt() });
+    const fname = `critical-review-${(judul || "laporan").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.html`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fname;
+    link.click();
+    URL.revokeObjectURL(url);
+    const subject = encodeURIComponent(`Laporan Critical Review — ${judul || meta.filename}`);
+    const body = encodeURIComponent(
+      `Halo ${data.name},\n\nTerlampir laporan Critical Review untuk "${judul}".\nFile "${fname}" sudah terunduh — silakan lampirkan ke email ini sebelum mengirim.\n\nRingkasan: Novelty ${a.novelty.score}/100 (${a.novelty.level}); ${a.totalCount} referensi.\n`
+    );
+    window.location.href = `mailto:${data.email}?subject=${subject}&body=${body}`;
+  };
+
   const sendEmail = async () => {
     setSending(true);
     setToast(null);
@@ -208,8 +227,15 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         body: JSON.stringify({ records: data.records, keywords, meta, synonymGroups }),
       });
       const json = await res.json();
-      if (res.ok && json.ok) setToast({ ok: true, msg: `Laporan terkirim ke ${data.email}.` });
-      else setToast({ ok: false, msg: json.error || "Gagal mengirim laporan." });
+      if (res.ok && json.ok) {
+        setToast({ ok: true, msg: `Laporan terkirim ke ${data.email}.` });
+      } else if (res.status === 501) {
+        // Not configured on server → open mail client with the report downloaded.
+        mailtoFallback();
+        setToast({ ok: true, msg: `Server email belum dikonfigurasi. Laporan diunduh & aplikasi email dibuka ke ${data.email} — lampirkan file yang terunduh.` });
+      } else {
+        setToast({ ok: false, msg: json.error || "Gagal mengirim laporan." });
+      }
     } catch {
       setToast({ ok: false, msg: "Gagal terhubung ke server." });
     } finally {
@@ -1048,15 +1074,8 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Card title="Influential Author" icon={<Users className="w-4 h-4" />} hint="Penulis paling berpengaruh (jumlah paper & sitasi bila ada).">
-          <ol className="space-y-1.5">
-            {a.litIntel.authors.map((au, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-1.5">
-                <span className="text-slate-200 truncate"><span className="text-slate-500 mr-1">{i + 1}.</span>{au.name}</span>
-                <span className="text-xs text-slate-400 shrink-0">{au.papers} paper{au.citations != null ? ` · ${au.citations} cit` : ""}</span>
-              </li>
-            ))}
-          </ol>
+        <Card title="Influential Author" icon={<Users className="w-4 h-4" />} hint="Penulis paling berpengaruh (jumlah paper & sitasi bila ada). Klik untuk melihat papernya.">
+          <AuthorList authors={a.litIntel.authors} />
         </Card>
         <Card title="Influential Institution" icon={<Building2 className="w-4 h-4" />} hint="Institusi/universitas paling sering muncul (dari afiliasi RIS).">
           {a.litIntel.institutions.length ? (
@@ -1329,6 +1348,40 @@ function GapClassList({ items }: { items: { key: string; name: string; count: nu
         );
       })}
     </div>
+  );
+}
+
+function AuthorList({ authors }: { authors: { name: string; papers: number; citations: number | null; refs: { title: string; year: number | null; url: string; source: string }[] }[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <ol className="space-y-1">
+      {authors.map((au, i) => {
+        const isOpen = open === i;
+        return (
+          <li key={i}>
+            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full flex items-center justify-between gap-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg px-3 py-1.5 transition">
+              <span className="text-slate-200 truncate flex items-center gap-1.5">
+                <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-500 transition-transform ${isOpen ? "rotate-180 text-violet-300" : ""}`} />
+                <span className="text-slate-500">{i + 1}.</span> {au.name}
+              </span>
+              <span className="text-xs text-slate-400 shrink-0">{au.papers} paper{au.citations != null ? ` · ${au.citations} cit` : ""}</span>
+            </button>
+            {isOpen && (
+              <ul className="mt-1 mb-2 ml-6 pl-3 space-y-1 border-l border-white/10">
+                {au.refs.map((ref, j) => (
+                  <li key={j}>
+                    <a href={ref.url || undefined} target="_blank" rel="noopener noreferrer" className={`group flex gap-1.5 text-xs leading-relaxed ${ref.url ? "text-slate-300 hover:text-white cursor-pointer" : "text-slate-300"}`}>
+                      <span><span className="text-violet-300 tabular-nums">{ref.year ?? "—"}</span> · {ref.title}{ref.source && <span className="text-slate-500"> — {ref.source}</span>}</span>
+                      {ref.url && <ExternalLink className="w-3 h-3 shrink-0 mt-0.5 opacity-0 group-hover:opacity-70 transition" />}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

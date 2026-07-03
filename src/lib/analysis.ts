@@ -1673,6 +1673,7 @@ export interface AuthorInfluence {
   name: string;
   papers: number;
   citations: number | null;
+  refs: RefLink[];
 }
 export interface CountItem {
   name: string;
@@ -1746,19 +1747,20 @@ export function literatureIntelligence(
     ? `${citedCount} dari ${records.length} paper memiliki data sitasi (total ${totalCit}, rata-rata ${(totalCit / (citedCount || 1)).toFixed(1)}). Paper paling banyak dikutip: "${highlyCited[0]?.title.slice(0, 60)}…" (${highlyCited[0]?.citations}).`
     : `Data sitasi tidak tersedia di file RIS ini, sehingga pengaruh diperkirakan dari sentralitas kosakata & usia paper. Untuk sitasi nyata, ekspor RIS dari Scopus/Web of Science (field TC/Z9).`;
 
-  // Authors (papers + citations if any)
-  const authorCit = new Map<string, { papers: number; cit: number; hasCit: boolean }>();
+  // Authors (papers + citations if any) with their paper list.
+  const authorCit = new Map<string, { papers: number; cit: number; hasCit: boolean; refs: RefLink[] }>();
   for (const r of records)
     for (const au of r.authors) {
       const name = au.trim();
       if (!name) continue;
-      const e = authorCit.get(name) || { papers: 0, cit: 0, hasCit: false };
+      const e = authorCit.get(name) || { papers: 0, cit: 0, hasCit: false, refs: [] };
       e.papers++;
+      e.refs.push({ title: r.title || "(tanpa judul)", year: r.year, url: paperUrl(r), source: r.source });
       if (r.citations != null) { e.cit += r.citations; e.hasCit = true; }
       authorCit.set(name, e);
     }
   const authors: AuthorInfluence[] = [...authorCit.entries()]
-    .map(([name, e]) => ({ name, papers: e.papers, citations: e.hasCit ? e.cit : null }))
+    .map(([name, e]) => ({ name, papers: e.papers, citations: e.hasCit ? e.cit : null, refs: e.refs.slice(0, 12) }))
     .sort((a, b) => (b.citations ?? 0) - (a.citations ?? 0) || b.papers - a.papers)
     .slice(0, 10);
 
