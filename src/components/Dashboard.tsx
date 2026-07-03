@@ -7,8 +7,10 @@ import {
   BarChart3,
   ChevronDown,
   Boxes,
+  Building2,
   Combine,
   CopyCheck,
+  Compass,
   Database,
   ExternalLink,
   FileDown,
@@ -16,6 +18,7 @@ import {
   FlaskConical,
   Gauge,
   GitBranch,
+  Globe,
   Grid3x3,
   HelpCircle,
   Info,
@@ -29,6 +32,8 @@ import {
   Pencil,
   Quote,
   Radar,
+  Rocket,
+  Route,
   Scale,
   ScanSearch,
   SlidersHorizontal,
@@ -42,6 +47,7 @@ import {
   TrendingDown,
   TrendingUp,
   TriangleAlert,
+  Users,
   Workflow,
   Wrench,
   X,
@@ -924,6 +930,137 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               </li>
             ))}
           </ul>
+        </Card>
+      </div>
+
+      {/* ===== Section 6: Literature Intelligence ===== */}
+      <SectionHeader
+        n={6}
+        title="Literature Intelligence"
+        subtitle="Paper & penulis berpengaruh, institusi, negara, timeline, frontier, dan ringkasan otomatis."
+      />
+
+      <Card title="AI Summary" icon={<Sparkles className="w-4 h-4" />} hint="Ringkasan otomatis dari seluruh analisis (Section 1–6)." className="mb-4">
+        <p className="text-sm text-slate-200 leading-relaxed">{a.litIntel.aiSummary}</p>
+      </Card>
+
+      <Card title="Research Timeline" icon={<Route className="w-4 h-4" />} hint="Perkembangan publikasi dari tahun ke tahun. Titik penting: awal, puncak, terkini." className="mb-4">
+        {a.litIntel.timeline.length ? (
+          <>
+            <TrendLine data={a.litIntel.timeline.map((t) => ({ label: String(t.year), value: t.count }))} height={220} />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {a.litIntel.timeline.filter((t) => t.milestone).map((t) => (
+                <span key={t.year} className="text-xs bg-violet-500/15 text-violet-200 border border-violet-400/25 rounded-full px-2.5 py-0.5">
+                  {t.year} · {t.milestone} ({t.count})
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Empty text="Tidak ada data tahun." />
+        )}
+      </Card>
+
+      {!a.litIntel.hasCitations && (
+        <div className="mb-4 text-xs bg-amber-500/10 border border-amber-500/25 text-amber-200 rounded-lg px-3 py-2">
+          ℹ️ File RIS ini tidak memuat data <b>sitasi</b>{!a.litIntel.hasAffiliations && " & afiliasi"}. Paper berpengaruh diperkirakan dari sentralitas kosakata & usia; institusi/negara mungkin kosong. Untuk data lengkap, ekspor RIS dari <b>Scopus/Web of Science</b>.
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Paper Landmark" icon={<Award className="w-4 h-4" />} hint={a.litIntel.hasCitations ? "Paper paling berpengaruh (berdasarkan sitasi)." : "Paper paling berpengaruh (proksi: sentralitas kosakata + usia)."}>
+          <ol className="space-y-1.5">
+            {a.litIntel.landmarks.map((p, i) => (
+              <li key={i}>
+                <a href={p.url || undefined} target="_blank" rel="noopener noreferrer" className="flex items-start justify-between gap-2 text-sm group">
+                  <span className="text-slate-300 group-hover:text-white"><span className="text-slate-500 mr-1">{i + 1}.</span>{p.title.slice(0, 70)} {p.year && <span className="text-slate-500">({p.year})</span>}</span>
+                  <span className="text-xs text-violet-300 tabular-nums shrink-0">{p.citations != null ? `${p.citations} cit` : p.score}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </Card>
+        <Card title="Highly Cited Paper" icon={<Quote className="w-4 h-4" />} hint="Top citation. Ringkasan citation network di bawah.">
+          {a.litIntel.hasCitations ? (
+            <ol className="space-y-1.5">
+              {a.litIntel.highlyCited.map((p, i) => (
+                <li key={i}>
+                  <a href={p.url || undefined} target="_blank" rel="noopener noreferrer" className="flex items-start justify-between gap-2 text-sm group">
+                    <span className="text-slate-300 group-hover:text-white"><span className="text-slate-500 mr-1">{i + 1}.</span>{p.title.slice(0, 70)} {p.year && <span className="text-slate-500">({p.year})</span>}</span>
+                    <span className="text-xs font-semibold text-violet-300 tabular-nums shrink-0">{p.citations} cit</span>
+                  </a>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <Empty text="Data sitasi tidak tersedia di RIS ini." />
+          )}
+          <p className="text-xs text-slate-500 mt-3 pt-2 border-t border-white/10"><b className="text-slate-400">Citation network:</b> {a.litIntel.citationSummary}</p>
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Influential Author" icon={<Users className="w-4 h-4" />} hint="Penulis paling berpengaruh (jumlah paper & sitasi bila ada).">
+          <ol className="space-y-1.5">
+            {a.litIntel.authors.map((au, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-1.5">
+                <span className="text-slate-200 truncate"><span className="text-slate-500 mr-1">{i + 1}.</span>{au.name}</span>
+                <span className="text-xs text-slate-400 shrink-0">{au.papers} paper{au.citations != null ? ` · ${au.citations} cit` : ""}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+        <Card title="Influential Institution" icon={<Building2 className="w-4 h-4" />} hint="Institusi/universitas paling sering muncul (dari afiliasi RIS).">
+          {a.litIntel.institutions.length ? (
+            <ol className="space-y-1.5">
+              {a.litIntel.institutions.map((it, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-1.5">
+                  <span className="text-slate-200 truncate"><span className="text-slate-500 mr-1">{i + 1}.</span>{it.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0">{it.count}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <Empty text="Afiliasi tidak tersedia di RIS ini." />
+          )}
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Country Collaboration" icon={<Globe className="w-4 h-4" />} hint="Negara paling aktif (dari afiliasi RIS).">
+          {a.litIntel.countries.length ? (
+            <div className="space-y-1.5">
+              {a.litIntel.countries.map((c, i) => {
+                const max = a.litIntel.countries[0].count || 1;
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs mb-0.5"><span className="text-slate-200">{c.name}</span><span className="text-slate-400">{c.count}</span></div>
+                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${(c.count / max) * 100}%` }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Empty text="Data negara tidak tersedia di RIS ini." />
+          )}
+        </Card>
+        <Card title="Research Frontier & Emerging Direction" icon={<Compass className="w-4 h-4" />} hint="Frontier = topik terkini (3 tahun terakhir). Emerging = prediksi arah dari burst + rekomendasi.">
+          <div className="mb-3">
+            <div className="text-xs font-semibold text-slate-300 mb-1.5">Research Frontier (terkini)</div>
+            <div className="flex flex-wrap gap-1.5">
+              {a.litIntel.frontier.length ? a.litIntel.frontier.map((f) => (
+                <span key={f} className="text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-400/25 rounded-full px-2.5 py-0.5">{f}</span>
+              )) : <span className="text-xs text-slate-500">—</span>}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-slate-300 mb-1.5">Emerging Research Direction (prediksi)</div>
+            <ul className="space-y-1">
+              {a.litIntel.emergingDirections.length ? a.litIntel.emergingDirections.map((d, i) => (
+                <li key={i} className="text-xs text-slate-300 flex gap-1.5"><Rocket className="w-3.5 h-3.5 text-violet-300 shrink-0 mt-0.5" /> {d}</li>
+              )) : <li className="text-xs text-slate-500">—</li>}
+            </ul>
+          </div>
         </Card>
       </div>
 

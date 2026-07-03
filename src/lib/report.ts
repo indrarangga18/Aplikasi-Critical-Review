@@ -119,6 +119,14 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   const fw = dz.framework;
   const fwText = `${esc(fw.independent.join(", ") || "—")} → ${fw.mediator ? esc(fw.mediator) + " → " : ""}${esc(fw.dependent)}${fw.moderator ? ` (dimoderasi ${esc(fw.moderator)})` : ""}`;
 
+  // Literature Intelligence (Section 6)
+  const li = a.litIntel;
+  const landmarkRows = li.landmarks.map((p, i) => `<tr><td>${i + 1}. ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title.slice(0, 80))}</a>` : esc(p.title.slice(0, 80))}${p.year ? ` (${p.year})` : ""}</td><td class="num">${p.citations != null ? p.citations : p.score}</td></tr>`).join("");
+  const authorRows = li.authors.map((x, i) => `<tr><td>${i + 1}. ${esc(x.name)}</td><td class="num">${x.papers}</td><td class="num">${x.citations != null ? x.citations : "—"}</td></tr>`).join("");
+  const instRows = li.institutions.map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.count}</td></tr>`).join("");
+  const countryRows = li.countries.map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.count}</td></tr>`).join("");
+  const dirItems = li.emergingDirections.map((d) => `<li>${esc(d)}</li>`).join("");
+
   // Keyword dynamics
   const dyn = a.dynamics;
   const evoFlow = dyn.evolution
@@ -426,6 +434,25 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <div class="cols" style="margin-top:8px;">
       <div><h3 style="font-size:14px;margin:0 0 4px;">Metode</h3><table><tbody>${methodRows}</tbody></table></div>
       <div><h3 style="font-size:14px;margin:0 0 4px;">Dataset</h3><table><tbody>${dsRows}</tbody></table></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Literature Intelligence</h2>
+    <div class="warn" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;">${esc(li.aiSummary)}</div>
+    ${!li.hasCitations ? `<p class="hint">Data sitasi/afiliasi tidak tersedia di RIS ini — pengaruh & kolaborasi memakai proksi.</p>` : ""}
+    <h3 style="font-size:14px;margin:10px 0 4px;">Paper Landmark / Highly Cited</h3>
+    <table><thead><tr><th>Paper</th><th class="num">${li.hasCitations ? "Sitasi" : "Skor"}</th></tr></thead><tbody>${landmarkRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
+    <div class="cols" style="margin-top:10px;">
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Influential Author</h3><table><thead><tr><th>Penulis</th><th class="num">Paper</th><th class="num">Sitasi</th></tr></thead><tbody>${authorRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table></div>
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Institution</h3><table><tbody>${instRows || "<tr><td class='muted'>tidak tersedia</td></tr>"}</tbody></table></div>
+    </div>
+    <div class="cols" style="margin-top:10px;">
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Country</h3><table><tbody>${countryRows || "<tr><td class='muted'>tidak tersedia</td></tr>"}</tbody></table></div>
+      <div>
+        <h3 style="font-size:14px;margin:0 0 4px;">Frontier</h3><p style="font-size:13px;">${esc(li.frontier.join(", ") || "—")}</p>
+        <h3 style="font-size:14px;margin:8px 0 4px;">Emerging Direction</h3><ul style="font-size:13px;margin:0;padding-left:18px;">${dirItems || "<li class='muted'>—</li>"}</ul>
+      </div>
     </div>
   </section>
 

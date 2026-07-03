@@ -1661,6 +1661,158 @@ export function researchDesign(
   return { titles, questions, hypotheses, variables, framework, methods, datasets };
 }
 
+// ---------- Literature Intelligence (Section 6) ----------
+export interface LandmarkPaper {
+  title: string;
+  year: number | null;
+  score: number;
+  citations: number | null;
+  url: string;
+}
+export interface AuthorInfluence {
+  name: string;
+  papers: number;
+  citations: number | null;
+}
+export interface CountItem {
+  name: string;
+  count: number;
+}
+export interface LitIntelligence {
+  hasCitations: boolean;
+  hasAffiliations: boolean;
+  landmarks: LandmarkPaper[];
+  highlyCited: LandmarkPaper[];
+  citationSummary: string;
+  authors: AuthorInfluence[];
+  institutions: CountItem[];
+  countries: CountItem[];
+  timeline: { year: number; count: number; milestone: string }[];
+  frontier: string[];
+  emergingDirections: string[];
+  aiSummary: string;
+}
+
+const COUNTRIES = [
+  "usa", "united states", "united kingdom", "uk", "england", "china", "japan", "germany", "france", "italy", "spain", "canada", "australia", "india", "indonesia", "malaysia", "singapore", "thailand", "vietnam", "philippines", "south korea", "korea", "taiwan", "netherlands", "switzerland", "sweden", "norway", "denmark", "finland", "belgium", "austria", "poland", "russia", "brazil", "mexico", "argentina", "turkey", "iran", "saudi arabia", "uae", "united arab emirates", "egypt", "south africa", "nigeria", "pakistan", "bangladesh", "new zealand", "ireland", "portugal", "greece", "czech", "hungary", "romania",
+];
+
+function detectCountry(affil: string): string | null {
+  const low = affil.toLowerCase();
+  for (const c of COUNTRIES) if (new RegExp("(^|[^a-z])" + c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z]|$)").test(low)) return c;
+  return null;
+}
+function titleCaseWord(s: string): string {
+  return s.replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+export function literatureIntelligence(
+  records: RisRecord[],
+  keywords: string[],
+  matched: RisRecord[],
+  dyn: KeywordDynamics,
+  novelty: NoveltyResult,
+  recs: Recommendation[]
+): LitIntelligence {
+  const hasCitations = records.some((r) => (r.citations ?? null) != null);
+  const hasAffiliations = records.some((r) => (r.affiliations?.length ?? 0) > 0);
+  const years = records.map((r) => r.year).filter((y): y is number => y != null);
+  const yMin = years.length ? Math.min(...years) : null;
+  const yMax = years.length ? Math.max(...years) : null;
+
+  // Influence proxy when citations are absent: vocabulary centrality + slight age bonus.
+  const cloud = keywordCloud(records, 30).terms;
+  const centralTerm = new Map(cloud.map((t) => [t.label, t.value]));
+  const maxTermVal = Math.max(...cloud.map((t) => t.value), 1);
+  const scorePaper = (r: RisRecord): number => {
+    if (hasCitations && r.citations != null) return r.citations;
+    let s = 0;
+    for (const [term, val] of centralTerm) if (r.searchable.includes(term)) s += val / maxTermVal;
+    const age = yMin != null && yMax != null && r.year != null && yMax > yMin ? (yMax - r.year) / (yMax - yMin) : 0;
+    return +(s * (1 + 0.4 * age)).toFixed(2); // foundational-vocabulary papers, older favoured a touch
+  };
+  const ranked = records
+    .filter((r) => r.title)
+    .map((r) => ({ title: r.title, year: r.year, score: scorePaper(r), citations: r.citations ?? null, url: paperUrl(r) }))
+    .sort((a, b) => b.score - a.score);
+  const landmarks = ranked.slice(0, 8);
+  const highlyCited = hasCitations
+    ? records.filter((r) => r.title && r.citations != null).map((r) => ({ title: r.title, year: r.year, score: r.citations as number, citations: r.citations as number, url: paperUrl(r) })).sort((a, b) => b.score - a.score).slice(0, 8)
+    : landmarks;
+
+  const citedCount = records.filter((r) => r.citations != null).length;
+  const totalCit = records.reduce((a, r) => a + (r.citations ?? 0), 0);
+  const citationSummary = hasCitations
+    ? `${citedCount} dari ${records.length} paper memiliki data sitasi (total ${totalCit}, rata-rata ${(totalCit / (citedCount || 1)).toFixed(1)}). Paper paling banyak dikutip: "${highlyCited[0]?.title.slice(0, 60)}…" (${highlyCited[0]?.citations}).`
+    : `Data sitasi tidak tersedia di file RIS ini, sehingga pengaruh diperkirakan dari sentralitas kosakata & usia paper. Untuk sitasi nyata, ekspor RIS dari Scopus/Web of Science (field TC/Z9).`;
+
+  // Authors (papers + citations if any)
+  const authorCit = new Map<string, { papers: number; cit: number; hasCit: boolean }>();
+  for (const r of records)
+    for (const au of r.authors) {
+      const name = au.trim();
+      if (!name) continue;
+      const e = authorCit.get(name) || { papers: 0, cit: 0, hasCit: false };
+      e.papers++;
+      if (r.citations != null) { e.cit += r.citations; e.hasCit = true; }
+      authorCit.set(name, e);
+    }
+  const authors: AuthorInfluence[] = [...authorCit.entries()]
+    .map(([name, e]) => ({ name, papers: e.papers, citations: e.hasCit ? e.cit : null }))
+    .sort((a, b) => (b.citations ?? 0) - (a.citations ?? 0) || b.papers - a.papers)
+    .slice(0, 10);
+
+  // Institutions + countries from affiliations
+  const instMap = new Map<string, number>();
+  const countryMap = new Map<string, number>();
+  for (const r of records)
+    for (const aff of r.affiliations || []) {
+      const parts = aff.split(",").map((p) => p.trim()).filter(Boolean);
+      const inst = parts.find((p) => /univ|institut|college|school|academ|laborator|department|fakultas|politeknik/i.test(p)) || parts[0];
+      if (inst) instMap.set(inst, (instMap.get(inst) || 0) + 1);
+      const ctry = detectCountry(aff);
+      if (ctry) countryMap.set(ctry, (countryMap.get(ctry) || 0) + 1);
+    }
+  const institutions: CountItem[] = [...instMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10);
+  const countries: CountItem[] = [...countryMap.entries()].map(([name, count]) => ({ name: titleCaseWord(name), count })).sort((a, b) => b.count - a.count).slice(0, 10);
+
+  // Timeline
+  const perYear = publicationsPerYear(records).map((p) => ({ year: Number(p.label), count: p.value }));
+  let peakYear = -1;
+  let peakCount = -1;
+  for (const p of perYear) if (p.count > peakCount) { peakCount = p.count; peakYear = p.year; }
+  const timeline = perYear.map((p) => ({
+    year: p.year,
+    count: p.count,
+    milestone: p.year === yMin ? "awal" : p.year === yMax ? "terkini" : p.year === peakYear ? "puncak" : "",
+  }));
+
+  // Frontier — top terms in the most recent ~3 years.
+  const frontierTerms = keywordCloud(
+    yMax != null ? records.filter((r) => r.year != null && r.year >= yMax - 2) : records,
+    12
+  ).terms.map((t) => t.label).slice(0, 8);
+
+  // Emerging directions — burst candidates + recommended combos + white space.
+  const dirs: string[] = [];
+  for (const c of dyn.candidates.filter((c) => c.direction === "up").slice(0, 3)) dirs.push(`${c.term} — sedang naik (${c.growthPct === null ? "baru" : "+" + c.growthPct + "%"})`);
+  for (const r of recs.slice(0, 3)) dirs.push(`${r.combo} — kombinasi menjanjikan (skor ${r.score})`);
+  const emergingDirections = dirs.slice(0, 6);
+
+  // AI summary (template synthesis of the whole analysis)
+  const growing = perYear.length >= 2 && perYear[perYear.length - 1].count >= perYear[0].count;
+  const topAuthor = authors[0]?.name;
+  const aiSummary =
+    `Korpus berisi ${records.length} referensi${yMin != null ? ` (${yMin}–${yMax})` : ""} dan tampak ${growing ? "tumbuh" : "melambat"} dari waktu ke waktu. ` +
+    `Kombinasi keyword Anda memperoleh Novelty Score ${novelty.score}/100 (${novelty.level}). ` +
+    (topAuthor ? `Kontributor paling produktif: ${topAuthor}. ` : "") +
+    (frontierTerms.length ? `Frontier riset terkini berkisar pada: ${frontierTerms.slice(0, 4).join(", ")}. ` : "") +
+    (recs[0] ? `Arah paling menjanjikan: ${recs[0].combo}. ` : "") +
+    (hasCitations ? "" : "Catatan: file RIS tanpa data sitasi/afiliasi, jadi analisis pengaruh & kolaborasi memakai proksi.");
+
+  return { hasCitations, hasAffiliations, landmarks, highlyCited, citationSummary, authors, institutions, countries, timeline, frontier: frontierTerms, emergingDirections, aiSummary };
+}
+
 // ---------- Top-level orchestrator ----------
 export interface AnalysisResult {
   quality: Quality;
@@ -1687,12 +1839,14 @@ export interface AnalysisResult {
   gaps: GapAnalysis;
   noveltyExtra: NoveltyExtra;
   design: ResearchDesign;
+  litIntel: LitIntelligence;
 }
 
 export function runAnalysis(records: RisRecord[], keywords: string[], judul = "", topik = ""): AnalysisResult {
   const matched = matchedRecords(records, keywords);
   const recs = recommendations(records, keywords);
   const dyn = keywordDynamics(records, keywords);
+  const nov = noveltyScore(records, keywords);
   return {
     quality: dataQuality(records),
     keywordCounts: keywordCounts(records, keywords),
@@ -1710,7 +1864,7 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     problem: problemIdentification(matched),
     cooc: cooccurrence(records),
     opportunity: researchOpportunity(records, keywords),
-    novelty: noveltyScore(records, keywords),
+    novelty: nov,
     recommendations: recs,
     venn: vennDomains(records, keywords),
     titleFit: titleRecommendationFit(judul, recs),
@@ -1718,5 +1872,6 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     gaps: gapAnalysis(matched, keywords, topik),
     noveltyExtra: noveltyExtra(records, matched, keywords, judul),
     design: researchDesign(records, keywords, judul, topik, recs, dyn),
+    litIntel: literatureIntelligence(records, keywords, matched, dyn, nov, recs),
   };
 }

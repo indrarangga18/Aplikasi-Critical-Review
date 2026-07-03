@@ -10,6 +10,8 @@ export interface RisRecord {
   keywords: string[];
   doi: string;
   type: string;
+  citations: number | null; // times-cited (WoS Z9/TC or "cited by" in notes), if present
+  affiliations: string[]; // author addresses (AD/C1), if present
   searchable: string;
 }
 
@@ -20,6 +22,7 @@ const AUTHOR_KEYS = ["AU", "A1", "A2"];
 const YEAR_KEYS = ["PY", "Y1", "DA"];
 const SOURCE_KEYS = ["JO", "JF", "JA", "T2"];
 const KEYWORD_KEYS = ["KW"];
+const CITATION_KEYS = ["Z9", "TC"]; // WoS total cited / times cited
 
 const YEAR_RE = /(19|20)\d{2}/;
 
@@ -104,6 +107,23 @@ export function parseRis(text: string): RisRecord[] {
     const doi = cleanText(e["DO"] || e["DOI"] || []);
     const type = cleanText(e["TY"] || []);
 
+    // Citations: WoS Z9/TC, else "Cited By: N" inside note fields.
+    let citations: number | null = null;
+    const cRaw = firstField(e, CITATION_KEYS);
+    if (cRaw.length) {
+      const m = String(cRaw[0]).match(/\d+/);
+      if (m) citations = parseInt(m[0], 10);
+    }
+    if (citations == null) {
+      const notes = [...(e["N1"] || []), ...(e["N2"] || [])].join(" ");
+      const m = notes.match(/cited\s*by[:\s]*?(\d+)/i);
+      if (m) citations = parseInt(m[1], 10);
+    }
+
+    const affiliations = [...(e["AD"] || []), ...(e["C1"] || [])]
+      .map((a) => a.trim())
+      .filter(Boolean);
+
     const searchable = (
       title +
       " . " +
@@ -112,7 +132,7 @@ export function parseRis(text: string): RisRecord[] {
       keywords.join(" ")
     ).toLowerCase();
 
-    return { title, abstract, authors, year, source, keywords, doi, type, searchable };
+    return { title, abstract, authors, year, source, keywords, doi, type, citations, affiliations, searchable };
   });
 
   return records.filter((r) => r.title || r.abstract || r.authors.length);
