@@ -6,12 +6,18 @@ import {
   Award,
   BarChart3,
   ChevronDown,
+  Boxes,
   Combine,
   CopyCheck,
+  Database,
   ExternalLink,
   FileDown,
+  FileText,
+  FlaskConical,
   Gauge,
+  GitBranch,
   Grid3x3,
+  HelpCircle,
   Info,
   Layers,
   LayoutGrid,
@@ -37,12 +43,13 @@ import {
   TrendingUp,
   TriangleAlert,
   Workflow,
+  Wrench,
   X,
 } from "lucide-react";
 import { runAnalysis, type GroupWithRefs } from "@/lib/analysis";
 import { registerSynonymGroups } from "@/lib/terms";
 import { buildReportHtml } from "@/lib/report";
-import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, InnovationRadar, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
+import { DivergingBar, FitBars, FrameworkDiagram, GroupedBar, HBar, Heatmap, InnovationRadar, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
 
 export default function Dashboard({ data, onReset }: { data: SessionData; onReset: () => void }) {
@@ -778,7 +785,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       >
         <FitBars data={a.titleFit.map((f) => ({ label: f.combo, recScore: f.recScore, titleFitPct: f.titleFitPct }))} height={Math.max(240, a.titleFit.length * 46)} />
       </Card>
-      <Card title="Tabel Kesesuaian Judul dengan Rekomendasi" icon={<Target className="w-4 h-4" />} hint="Cek apakah kata dari tiap kombinasi rekomendasi sudah tercermin di judul penelitian Anda." className="mb-10">
+      <Card title="Tabel Kesesuaian Judul dengan Rekomendasi" icon={<Target className="w-4 h-4" />} hint="Cek apakah kata dari tiap kombinasi rekomendasi sudah tercermin di judul penelitian Anda." className="mb-4">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -827,6 +834,98 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           ) : null;
         })()}
       </Card>
+
+      {/* Research design generators */}
+      <Card title="Top 20 Rekomendasi Judul" icon={<FileText className="w-4 h-4" />} hint="Judul penelitian yang dirakit dari kombinasi keyword paling menjanjikan, dengan skor (dari Section 1/opportunity)." className="mb-4">
+        <ol className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+          {a.design.titles.map((t, i) => (
+            <li key={i} className="flex items-start justify-between gap-2 text-sm">
+              <span className="text-slate-300"><span className="text-slate-500 mr-1">{i + 1}.</span>{t.text}</span>
+              <span className="text-xs font-semibold text-violet-300 tabular-nums shrink-0">{t.score}</span>
+            </li>
+          ))}
+        </ol>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card title="Research Question (10)" icon={<HelpCircle className="w-4 h-4" />} hint="Pertanyaan penelitian dari kombinasi teratas, dengan skor.">
+          <ol className="space-y-1.5">
+            {a.design.questions.map((q, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                <span className="text-slate-200"><span className="text-slate-500 mr-1">RQ{i + 1}.</span>{q.text}</span>
+                <span className="text-xs font-semibold text-violet-300 tabular-nums shrink-0">{q.score}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+        <Card title="Hipotesis (10)" icon={<FlaskConical className="w-4 h-4" />} hint="Hipotesis yang bisa diuji dari kombinasi teratas, dengan skor.">
+          <ol className="space-y-1.5">
+            {a.design.hypotheses.map((h, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 text-sm bg-white/5 rounded-lg px-3 py-2">
+                <span className="text-slate-200">{h.text}</span>
+                <span className="text-xs font-semibold text-violet-300 tabular-nums shrink-0">{h.score}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      </div>
+
+      <Card title="Variabel Penelitian" icon={<Boxes className="w-4 h-4" />} hint="Saran peran variabel dari keyword Anda: Dependent (paling sentral), Independent (paling sering), Mediator (sedang berkembang), Moderator (paling kontekstual)." className="mb-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {([["Dependent", a.design.variables.dependent, "#34d399"], ["Independent", a.design.variables.independent, "#818cf8"], ["Mediator", a.design.variables.mediator, "#c084fc"], ["Moderator", a.design.variables.moderator, "#fbbf24"]] as const).map(([role, vars, color]) => (
+            <div key={role}>
+              <div className="text-xs font-semibold mb-1.5" style={{ color }}>{role}</div>
+              <ul className="space-y-1">
+                {vars.map((v, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 text-xs bg-white/5 rounded-lg px-2.5 py-1.5">
+                    <span className="text-slate-200 truncate">{v.name}</span>
+                    <span className="tabular-nums text-slate-400 shrink-0">{v.score}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Framework Penelitian (Diagram Otomatis)" icon={<GitBranch className="w-4 h-4" />} hint="Kerangka usulan dari peran variabel di atas — titik awal, sesuaikan dengan teori Anda." className="mb-4">
+        <FrameworkDiagram framework={a.design.framework} />
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-10">
+        <Card title="Metode yang Direkomendasikan" icon={<Wrench className="w-4 h-4" />} hint="Skor metode dari sinyal data (relasi variabel, rentang tahun, sinyal deep learning/teks). Bisa dikombinasikan.">
+          <div className="space-y-2">
+            {a.design.methods.map((m, i) => (
+              <div key={i}>
+                <div className="flex justify-between text-xs mb-0.5">
+                  <span className="text-slate-200">{m.name}</span>
+                  <span className="text-slate-400 tabular-nums">{m.score}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500" style={{ width: `${m.score}%` }} />
+                </div>
+                {m.reason && <p className="text-[11px] text-slate-500 mt-0.5">{m.reason}</p>}
+              </div>
+            ))}
+          </div>
+          {a.design.methods.length >= 2 && (
+            <p className="text-xs text-violet-300/80 mt-3">💡 Kombinasi menjanjikan: <b>{a.design.methods[0].name}</b> + <b>{a.design.methods[1].name}</b>.</p>
+          )}
+        </Card>
+        <Card title="Rekomendasi Dataset" icon={<Database className="w-4 h-4" />} hint="Sumber data yang relevan dengan domain topik & keyword Anda.">
+          <ul className="space-y-1.5">
+            {a.design.datasets.map((d, i) => (
+              <li key={i} className="text-sm bg-white/5 rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-200">{d.name}</span>
+                  <span className="text-xs font-semibold text-violet-300 tabular-nums shrink-0">{d.score}</span>
+                </div>
+                {d.reason && <p className="text-[11px] text-slate-500 mt-0.5">{d.reason}</p>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
 
       <p className="text-slate-500 text-xs text-center max-w-2xl mx-auto pb-10">
         ⚠️ Seluruh rekomendasi adalah TITIK AWAL, bukan kesimpulan. Pencocokan sudah memakai glosarium bilingual

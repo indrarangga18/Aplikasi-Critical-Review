@@ -1483,6 +1483,184 @@ export function noveltyExtra(records: RisRecord[], matched: RisRecord[], keyword
   return { dimensions, radar, radarInsight, similar, oppLabels: keywords, oppMatrix, whiteSpace: whiteSpace.slice(0, 8), untouched };
 }
 
+// ---------- Research design generator (Section 5) ----------
+export interface ScoredText {
+  text: string;
+  score: number;
+}
+export interface RoleVar {
+  name: string;
+  score: number;
+}
+export interface ResearchVariables {
+  dependent: RoleVar[];
+  independent: RoleVar[];
+  mediator: RoleVar[];
+  moderator: RoleVar[];
+}
+export interface FrameworkModel {
+  dependent: string;
+  independent: string[];
+  mediator: string | null;
+  moderator: string | null;
+}
+export interface ScoredReason {
+  name: string;
+  score: number;
+  reason: string;
+}
+export interface ResearchDesign {
+  titles: ScoredText[];
+  questions: ScoredText[];
+  hypotheses: ScoredText[];
+  variables: ResearchVariables;
+  framework: FrameworkModel;
+  methods: ScoredReason[];
+  datasets: ScoredReason[];
+}
+
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const DATASET_MAP: { name: string; domain: string; cues: string[] }[] = [
+  { name: "Scopus", domain: "literatur", cues: [] },
+  { name: "OpenAlex", domain: "literatur", cues: [] },
+  { name: "Dimensions", domain: "literatur", cues: [] },
+  { name: "Web of Science", domain: "literatur", cues: [] },
+  { name: "Kaggle", domain: "AI/ML", cues: ["machine learning", "deep learning", "artificial intelligence", "neural", "prediction", "klasifikasi", "kecerdasan buatan"] },
+  { name: "Hugging Face Datasets", domain: "AI/NLP", cues: ["nlp", "language", "text", "transformer", "llm", "bahasa"] },
+  { name: "UCI ML Repository", domain: "AI/ML", cues: ["machine learning", "classification", "regression", "prediksi"] },
+  { name: "World Bank Open Data", domain: "ekonomi", cues: ["economic", "finance", "development", "revenue", "ekonomi", "keuangan", "pembangunan", "kemiskinan"] },
+  { name: "OECD.Stat", domain: "ekonomi/kebijakan", cues: ["tax", "policy", "governance", "pajak", "kebijakan"] },
+  { name: "BPS (Badan Pusat Statistik)", domain: "statistik Indonesia", cues: ["daerah", "indonesia", "wilayah", "regional", "penduduk", "provinsi", "kabupaten"] },
+  { name: "DJP / Tax Office data", domain: "perpajakan", cues: ["tax", "pajak", "perpajakan", "wajib pajak", "penagihan", "piutang", "fraud", "kecurangan"] },
+  { name: "Bank Indonesia / OJK", domain: "keuangan", cues: ["finance", "banking", "keuangan", "perbankan", "kredit", "piutang"] },
+  { name: "Google Earth Engine", domain: "geospasial", cues: ["spatial", "satellite", "remote sensing", "land", "geographic", "geospasial", "citra", "lahan", "wilayah"] },
+  { name: "WHO / PubMed", domain: "kesehatan", cues: ["health", "clinical", "medical", "disease", "patient", "kesehatan", "klinis", "penyakit"] },
+];
+
+export function researchDesign(
+  records: RisRecord[],
+  keywords: string[],
+  judul: string,
+  topik: string,
+  recs: Recommendation[],
+  dynamics: KeywordDynamics
+): ResearchDesign {
+  const topic = topik || judul || "topik ini";
+  const combos = recs.slice(0, 12).map((r) => {
+    const [a, b] = r.combo.split(" × ").map((s) => s.trim());
+    return { a, b, score: r.score };
+  });
+  const safeCombos = combos.length ? combos : keywords.slice(0, 2).length >= 2 ? [{ a: keywords[0], b: keywords[1], score: 60 }] : [];
+
+  // Titles (20)
+  const titleTpl = [
+    (a: string, b: string) => `Pengaruh ${titleCase(a)} terhadap ${titleCase(b)}`,
+    (a: string, b: string) => `Peran ${titleCase(a)} dalam Meningkatkan ${titleCase(b)}`,
+    (a: string, b: string) => `Analisis ${titleCase(a)} dan ${titleCase(b)} pada ${titleCase(topic)}`,
+    (a: string, b: string) => `Model ${titleCase(a)} untuk Optimalisasi ${titleCase(b)}`,
+    (a: string, b: string) => `Integrasi ${titleCase(a)} dan ${titleCase(b)}: Studi pada ${titleCase(topic)}`,
+    (a: string, b: string) => `Faktor ${titleCase(a)} yang Memengaruhi ${titleCase(b)}`,
+  ];
+  const titlesRaw: ScoredText[] = [];
+  safeCombos.forEach((c, ci) => {
+    titleTpl.forEach((t, ti) => titlesRaw.push({ text: t(c.a, c.b), score: Math.max(1, Math.round(c.score - ci * 1.5 - ti * 1.2)) }));
+  });
+  const seenT = new Set<string>();
+  const titles = titlesRaw.filter((t) => (seenT.has(t.text) ? false : (seenT.add(t.text), true))).sort((a, b) => b.score - a.score).slice(0, 20);
+
+  // Research questions (10)
+  const rqTpl = [
+    (a: string, b: string) => `Bagaimana pengaruh ${a} terhadap ${b}?`,
+    (a: string, b: string) => `Sejauh mana ${a} memengaruhi ${b}?`,
+    (a: string, b: string) => `Apakah terdapat hubungan signifikan antara ${a} dan ${b}?`,
+    (a: string, b: string) => `Bagaimana peran ${a} dalam meningkatkan ${b}?`,
+  ];
+  const rqRaw: ScoredText[] = [];
+  safeCombos.forEach((c, ci) => rqTpl.forEach((t, ti) => rqRaw.push({ text: t(c.a, c.b), score: Math.max(1, Math.round(c.score - ci * 2 - ti)) })));
+  const seenQ = new Set<string>();
+  const questions = rqRaw.filter((q) => (seenQ.has(q.text) ? false : (seenQ.add(q.text), true))).sort((a, b) => b.score - a.score).slice(0, 10);
+
+  // Hypotheses (10)
+  const hypTpl = [
+    (a: string, b: string) => `${titleCase(a)} berpengaruh positif dan signifikan terhadap ${b}.`,
+    (a: string, b: string) => `Terdapat hubungan signifikan antara ${a} dan ${b}.`,
+    (a: string, b: string) => `${titleCase(a)} meningkatkan ${b} secara signifikan.`,
+  ];
+  const hypRaw: ScoredText[] = [];
+  safeCombos.forEach((c, ci) => hypTpl.forEach((t, ti) => hypRaw.push({ text: t(c.a, c.b), score: Math.max(1, Math.round(c.score - ci * 2 - ti)) })));
+  const seenH = new Set<string>();
+  const hypotheses = hypRaw
+    .filter((h) => (seenH.has(h.text) ? false : (seenH.add(h.text), true)))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
+    .map((h, i) => ({ text: `H${i + 1}: ${h.text}`, score: h.score }));
+
+  // Variables — assign roles by heuristic signals.
+  const centralityMap = new Map(dynamics.centrality.map((c) => [c.term, c.eigenvector]));
+  const df = keywords.map((k) => records.reduce((acc, r) => acc + (containsTerm(r.searchable, k) ? 1 : 0), 0));
+  const maxDf = Math.max(...df, 1);
+  const perKw = keywords.map((k, i) => ({
+    k,
+    central: centralityMap.get(k) ?? 0,
+    freq: df[i] / maxDf,
+    emerging: Math.max(-1, Math.min(1, emergingScore(records, k))),
+  }));
+  const norm = (arr: { k: string; v: number }[]): RoleVar[] => {
+    const mx = Math.max(...arr.map((x) => x.v), 0.0001);
+    return arr.map((x) => ({ name: x.k, score: Math.round((x.v / mx) * 100) })).sort((a, b) => b.score - a.score).slice(0, 5);
+  };
+  const variables: ResearchVariables = {
+    dependent: norm(perKw.map((p) => ({ k: p.k, v: p.central + p.freq * 0.5 }))), // paling sentral = outcome
+    independent: norm(perKw.map((p) => ({ k: p.k, v: p.freq }))), // paling sering diteliti
+    mediator: norm(perKw.map((p) => ({ k: p.k, v: (p.emerging + 1) / 2 }))), // sedang berkembang = proses
+    moderator: norm(perKw.map((p) => ({ k: p.k, v: 1 - p.central }))), // paling terisolasi = kontekstual
+  };
+  const dep = variables.dependent[0]?.name || keywords[0] || "outcome";
+  const framework: FrameworkModel = {
+    dependent: dep,
+    independent: variables.independent.filter((v) => v.name !== dep).slice(0, 3).map((v) => v.name),
+    mediator: variables.mediator.find((v) => v.name !== dep)?.name ?? null,
+    moderator: variables.moderator.find((v) => v.name !== dep)?.name ?? null,
+  };
+
+  // Methods — score by data/design signals.
+  const years = records.map((r) => r.year).filter((y): y is number => y != null);
+  const yearSpan = years.length ? Math.max(...years) - Math.min(...years) : 0;
+  const bigCorpus = records.length >= 200;
+  const hasRelational = !!(framework.mediator || framework.moderator);
+  const blob = (keywords.join(" ") + " " + records.map((r) => r.searchable).slice(0, 300).join(" ")).toLowerCase();
+  const hasDL = ["deep learning", "neural", "cnn", "lstm", "transformer", "artificial intelligence", "machine learning"].some((c) => blob.includes(c));
+  const hasText = ["text", "nlp", "sentiment", "language", "review", "abstract", "bahasa"].some((c) => blob.includes(c));
+  const clamp = (n: number) => Math.max(5, Math.min(100, Math.round(n)));
+  const methods: ScoredReason[] = [
+    { name: "PLS-SEM", score: clamp(55 + (hasRelational ? 25 : 0) + (!bigCorpus ? 10 : 0)), reason: "Cocok untuk model dengan mediator/moderator & sampel terbatas." },
+    { name: "CB-SEM", score: clamp(50 + (hasRelational ? 20 : 0) + (bigCorpus ? 15 : 0)), reason: "Uji model teori kompleks bila sampel besar." },
+    { name: "Panel Data Regression", score: clamp(35 + (yearSpan >= 5 ? 40 : yearSpan >= 3 ? 20 : 0)), reason: yearSpan >= 3 ? `Ada data lintas waktu (${yearSpan} tahun).` : "Butuh data multi-periode." },
+    { name: "LSTM", score: clamp(25 + (hasDL ? 40 : 0) + (yearSpan >= 5 ? 15 : 0)), reason: "Peramalan deret waktu bila datanya temporal & besar." },
+    { name: "CNN", score: clamp(20 + (hasDL ? 35 : 0)), reason: "Untuk data citra/spasial atau pola berbasis grid." },
+    { name: "Transformer", score: clamp(25 + (hasText ? 40 : 0) + (hasDL ? 10 : 0)), reason: "Untuk data teks/urutan (mis. abstrak, kebijakan)." },
+    { name: "Mixed Method", score: clamp(55 + (hasRelational ? 5 : 0)), reason: "Menggabungkan kuantitatif & kualitatif untuk kedalaman." },
+    { name: "Case Study", score: clamp(45 + (!bigCorpus ? 15 : 0)), reason: "Eksplorasi mendalam bila fenomena spesifik/kontekstual." },
+  ].sort((a, b) => b.score - a.score);
+
+  // Datasets — score by domain match.
+  const dsBlob = (keywords.join(" ") + " " + topic).toLowerCase();
+  const datasets: ScoredReason[] = DATASET_MAP.map((d) => {
+    const hits = d.cues.filter((c) => dsBlob.includes(c)).length;
+    const base = d.domain === "literatur" ? 70 : 0; // sumber literatur selalu relevan utk lit review
+    const score = clamp(base + hits * 22 + (hits > 0 ? 20 : 0));
+    return { name: d.name, score, reason: hits > 0 ? `Relevan dengan domain ${d.domain}.` : d.domain === "literatur" ? "Sumber literatur untuk memperluas korpus." : "" };
+  })
+    .filter((d) => d.score >= 40)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  return { titles, questions, hypotheses, variables, framework, methods, datasets };
+}
+
 // ---------- Top-level orchestrator ----------
 export interface AnalysisResult {
   quality: Quality;
@@ -1508,11 +1686,13 @@ export interface AnalysisResult {
   dynamics: KeywordDynamics;
   gaps: GapAnalysis;
   noveltyExtra: NoveltyExtra;
+  design: ResearchDesign;
 }
 
 export function runAnalysis(records: RisRecord[], keywords: string[], judul = "", topik = ""): AnalysisResult {
   const matched = matchedRecords(records, keywords);
   const recs = recommendations(records, keywords);
+  const dyn = keywordDynamics(records, keywords);
   return {
     quality: dataQuality(records),
     keywordCounts: keywordCounts(records, keywords),
@@ -1534,8 +1714,9 @@ export function runAnalysis(records: RisRecord[], keywords: string[], judul = ""
     recommendations: recs,
     venn: vennDomains(records, keywords),
     titleFit: titleRecommendationFit(judul, recs),
-    dynamics: keywordDynamics(records, keywords),
+    dynamics: dyn,
     gaps: gapAnalysis(matched, keywords, topik),
     noveltyExtra: noveltyExtra(records, matched, keywords, judul),
+    design: researchDesign(records, keywords, judul, topik, recs, dyn),
   };
 }

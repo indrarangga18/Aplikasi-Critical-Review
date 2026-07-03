@@ -220,43 +220,54 @@ export function WordCloud({
   );
 }
 
-// Simple CSS-grid heatmap (recharts has no native heatmap).
+// Compact CSS-grid heatmap (recharts has no native heatmap).
 export function Heatmap({
   labels,
   matrix,
   annotate = false,
+  cellSize = 40,
 }: {
   labels: string[];
   matrix: number[][];
   annotate?: boolean;
+  cellSize?: number;
 }) {
-  const max = Math.max(1, ...matrix.flat());
+  // Contrast over the OFF-diagonal range so cells differentiate (min→max),
+  // not just 0→max (which washes out when values cluster).
+  const off: number[] = [];
+  for (let i = 0; i < matrix.length; i++)
+    for (let j = 0; j < (matrix[i]?.length ?? 0); j++) if (i !== j) off.push(matrix[i][j]);
+  const lo = off.length ? Math.min(...off) : 0;
+  const hi = off.length ? Math.max(...off) : 1;
+  const span = hi - lo || 1;
   const cell = (v: number) => {
-    const a = v / max;
-    return `rgba(167,139,250,${0.12 + a * 0.85})`;
+    const a = Math.max(0, Math.min(1, (v - lo) / span));
+    return `rgba(167,139,250,${0.08 + a * 0.9})`;
   };
+  const px = Math.max(26, Math.min(48, cellSize));
+  const labelW = 116;
   return (
     <div className="overflow-auto">
       <div
-        className="grid gap-[3px]"
-        style={{ gridTemplateColumns: `120px repeat(${labels.length}, minmax(30px,1fr))` }}
+        className="grid gap-[3px] mx-auto w-max"
+        style={{ gridTemplateColumns: `${labelW}px repeat(${labels.length}, ${px}px)` }}
       >
         <div />
         {labels.map((l) => (
-          <div key={l} className="text-[10px] text-slate-400 truncate rotate-0 text-center pb-1" title={l}>
-            {l.length > 8 ? l.slice(0, 8) + "…" : l}
+          <div key={l} className="text-[9px] text-slate-400 truncate text-center pb-1" title={l}>
+            {l.length > 7 ? l.slice(0, 7) + "…" : l}
           </div>
         ))}
         {matrix.map((row, i) => (
           <div key={i} className="contents">
-            <div className="text-[11px] text-slate-300 truncate pr-2 flex items-center justify-end" title={labels[i]}>
-              {labels[i].length > 14 ? labels[i].slice(0, 14) + "…" : labels[i]}
+            <div className="text-[11px] text-slate-300 truncate pr-2 flex items-center justify-end" style={{ height: px }} title={labels[i]}>
+              {labels[i].length > 15 ? labels[i].slice(0, 15) + "…" : labels[i]}
             </div>
             {row.map((v, j) => (
               <div
                 key={j}
-                className="aspect-square rounded-[4px] flex items-center justify-center text-[9px] text-white/90"
-                style={{ background: i === j ? "rgba(255,255,255,.04)" : cell(v) }}
+                className="rounded-[4px] flex items-center justify-center text-[10px] font-medium text-white"
+                style={{ width: px, height: px, background: i === j ? "rgba(255,255,255,.04)" : cell(v) }}
                 title={`${labels[i]} × ${labels[j]}: ${v}`}
               >
                 {annotate && i !== j && v > 0 ? v : ""}
@@ -344,6 +355,46 @@ export function FitBars({
         <Bar dataKey="titleFitPct" name="Kesesuaian judul (%)" radius={[0, 5, 5, 0]} fill="#f472b6" />
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+// Auto research framework diagram: Independent → (Mediator) → Dependent, + Moderator.
+export function FrameworkDiagram({
+  framework,
+}: {
+  framework: { dependent: string; independent: string[]; mediator: string | null; moderator: string | null };
+}) {
+  const Box = ({ label, sub, color }: { label: string; sub?: string; color: string }) => (
+    <div className="rounded-lg px-3 py-2 text-center border text-xs" style={{ background: `${color}1a`, borderColor: `${color}55`, color: "#e2e8f0" }}>
+      {sub && <div className="text-[9px] uppercase tracking-wide opacity-70">{sub}</div>}
+      <div className="font-medium">{label}</div>
+    </div>
+  );
+  const Arrow = () => <div className="text-slate-500 text-lg px-1 shrink-0">→</div>;
+  return (
+    <div className="overflow-x-auto py-2">
+      {framework.moderator && (
+        <div className="flex flex-col items-center mb-1">
+          <Box label={framework.moderator} sub="Moderator" color="#fbbf24" />
+          <div className="text-slate-500 leading-none">↓</div>
+        </div>
+      )}
+      <div className="flex items-center justify-center gap-1 min-w-max">
+        <div className="flex flex-col gap-1.5">
+          {(framework.independent.length ? framework.independent : ["—"]).map((v, i) => (
+            <Box key={i} label={v} sub={i === 0 ? "Independent" : undefined} color="#818cf8" />
+          ))}
+        </div>
+        <Arrow />
+        {framework.mediator && (
+          <>
+            <Box label={framework.mediator} sub="Mediator" color="#c084fc" />
+            <Arrow />
+          </>
+        )}
+        <Box label={framework.dependent} sub="Dependent" color="#34d399" />
+      </div>
+    </div>
   );
 }
 

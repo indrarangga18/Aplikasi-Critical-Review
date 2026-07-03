@@ -108,6 +108,17 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
   const simRows = nx.similar.map((s) => `<tr><td>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>` : esc(s.title)}${s.year ? ` (${s.year})` : ""}</td><td class="num">${s.similarity}%</td></tr>`).join("");
   const wsRows = nx.whiteSpace.map((w) => `<tr><td>${esc(w.a)} × ${esc(w.b)}</td><td class="num">${w.aFreq}·${w.bFreq}</td><td class="num">${w.score}</td></tr>`).join("");
 
+  // Research design (Section 5)
+  const dz = a.design;
+  const titleItems = dz.titles.slice(0, 20).map((t, i) => `<li>${esc(t.text)} <span style="color:#94a3b8;">(${t.score})</span></li>`).join("");
+  const rqItems = dz.questions.map((q) => `<li>${esc(q.text)} <span style="color:#94a3b8;">(${q.score})</span></li>`).join("");
+  const hypItems = dz.hypotheses.map((h) => `<li>${esc(h.text)} <span style="color:#94a3b8;">(${h.score})</span></li>`).join("");
+  const varCell = (vs: { name: string; score: number }[]) => vs.map((v) => `${esc(v.name)} (${v.score})`).join(", ");
+  const methodRows = dz.methods.map((m) => `<tr><td>${esc(m.name)}</td><td class="num">${m.score}</td><td>${esc(m.reason)}</td></tr>`).join("");
+  const dsRows = dz.datasets.map((d) => `<tr><td>${esc(d.name)}</td><td class="num">${d.score}</td><td>${esc(d.reason)}</td></tr>`).join("");
+  const fw = dz.framework;
+  const fwText = `${esc(fw.independent.join(", ") || "—")} → ${fw.mediator ? esc(fw.mediator) + " → " : ""}${esc(fw.dependent)}${fw.moderator ? ` (dimoderasi ${esc(fw.moderator)})` : ""}`;
+
   // Keyword dynamics
   const dyn = a.dynamics;
   const evoFlow = dyn.evolution
@@ -394,6 +405,28 @@ export function buildReportHtml(a: AnalysisResult, meta: ReportMeta): string {
     <table><thead><tr><th>Keyword</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Eigenvector</th></tr></thead><tbody>${centralityRows || "<tr><td class='muted'>—</td></tr>"}</tbody></table>
     <h3 style="font-size:14px;margin:14px 0 4px;">Thematic Map (Quadrant)</h3>
     <table><thead><tr><th>Kuadran</th><th>Keyword</th></tr></thead><tbody>${quadGroups}</tbody></table>
+  </section>
+
+  <section>
+    <h2>Desain Penelitian — Rekomendasi</h2>
+    <h3 style="font-size:14px;margin:8px 0 4px;">Top 20 Judul</h3>
+    <ol style="margin:0; padding-left:18px; font-size:13px;">${titleItems}</ol>
+    <div class="cols" style="margin-top:10px;">
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Research Question</h3><ol style="margin:0;padding-left:18px;font-size:13px;">${rqItems}</ol></div>
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Hipotesis</h3><ol style="margin:0;padding-left:18px;font-size:13px;">${hypItems}</ol></div>
+    </div>
+    <h3 style="font-size:14px;margin:12px 0 4px;">Variabel</h3>
+    <table><tbody>
+      <tr><td><b>Dependent</b></td><td>${varCell(dz.variables.dependent)}</td></tr>
+      <tr><td><b>Independent</b></td><td>${varCell(dz.variables.independent)}</td></tr>
+      <tr><td><b>Mediator</b></td><td>${varCell(dz.variables.mediator)}</td></tr>
+      <tr><td><b>Moderator</b></td><td>${varCell(dz.variables.moderator)}</td></tr>
+    </tbody></table>
+    <p style="font-size:13px;margin-top:8px;"><b>Framework:</b> ${fwText}</p>
+    <div class="cols" style="margin-top:8px;">
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Metode</h3><table><tbody>${methodRows}</tbody></table></div>
+      <div><h3 style="font-size:14px;margin:0 0 4px;">Dataset</h3><table><tbody>${dsRows}</tbody></table></div>
+    </div>
   </section>
 
   <p class="foot">
