@@ -119,6 +119,39 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   }, [a]);
   const shareTrend = yearTrend.map((d) => ({ label: d.label, value: d.korpus ? Math.round((d.relevan / d.korpus) * 100) : 0 }));
 
+  // Data-driven interpretations (one-liner per card).
+  const ins = useMemo(() => {
+    const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
+    const strengthTop = [...a.strength].sort((x, y) => y.strengthScore - x.strengthScore)[0];
+    const emergingUp = a.opportunity.emerging.filter((e) => e.value > 0);
+    const emergingDown = a.opportunity.emerging.filter((e) => e.value < 0);
+    const spreadTop = [...a.keywordCounts].sort((x, y) => y.docFreq - x.docFreq)[0];
+    const shareLast = shareTrend[shareTrend.length - 1]?.value ?? 0;
+    const shareFirst = shareTrend[0]?.value ?? 0;
+    const centralTop = a.dynamics.centrality[0];
+    const motor = a.dynamics.thematic.filter((t) => t.quadrant === "Motor").map((t) => t.term);
+    const up = a.dynamics.userMomentum.filter((m) => m.direction === "up");
+    const down = a.dynamics.userMomentum.filter((m) => m.direction === "down");
+    const rarest = a.opportunity.rarePairs[0];
+    const gapTop = a.gaps.classification[0];
+    const ctr = a.gaps.contradiction;
+    const dimTop = a.noveltyExtra.dimensions.find((d) => d.score > 0);
+    const oppBest = (() => {
+      let best = { a: "", b: "", v: -1 };
+      const m = a.noveltyExtra.oppMatrix;
+      for (let i = 0; i < m.length; i++) for (let j = i + 1; j < m.length; j++) if (m[i][j] > best.v) best = { a: a.noveltyExtra.oppLabels[i], b: a.noveltyExtra.oppLabels[j], v: m[i][j] };
+      return best;
+    })();
+    const simTop = a.noveltyExtra.similar[0];
+    const methodTop = a.design.methods[0];
+    const dsTop = a.design.datasets[0];
+    const land = a.litIntel.landmarks[0];
+    const authorTop = a.litIntel.authors[0];
+    const countryTop = a.litIntel.countries[0];
+    const peak = a.litIntel.timeline.find((t) => t.milestone === "puncak") || a.litIntel.timeline[a.litIntel.timeline.length - 1];
+    return { pct, strengthTop, emergingUp, emergingDown, spreadTop, shareLast, shareFirst, centralTop, motor, up, down, rarest, gapTop, ctr, dimTop, oppBest, simTop, methodTop, dsTop, land, authorTop, countryTop, peak };
+  }, [a, shareTrend]);
+
   const draftKeywords = Array.from(
     new Set(kwDraft.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean))
   );
@@ -414,22 +447,27 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
         <Card title="Keyword Strength" icon={<BarChart3 className="w-4 h-4" />} hint="Seberapa mapan keyword di korpus. Strength tinggi = topik padat (cenderung kurang novel).">
           <GroupedBar data={strengthData} height={300} />
+          <Insight>{ins.strengthTop ? <>Keyword paling mapan: <b className="text-slate-200">{ins.strengthTop.keyword}</b> (strength {ins.strengthTop.strengthScore}), hadir di {ins.strengthTop.docFreq} referensi. Strength tinggi = topik padat/sudah ramai, cenderung <b>kurang novel</b>.</> : "—"}</Insight>
         </Card>
         <Card title="Sinyal Emerging Keyword" hint="Δ proporsi periode baru − lama. Hijau = menaik belakangan.">
           <DivergingBar data={a.opportunity.emerging} height={300} />
+          <Insight>{ins.emergingUp.length ? <><b className="text-emerald-300">{ins.emergingUp.length}</b> keyword menaik (teratas: {ins.emergingUp[0].keyword} {ins.emergingUp[0].value > 0 ? "+" : ""}{ins.emergingUp[0].value})</> : "Tidak ada keyword yang menaik"} · {ins.emergingDown.length ? <><b className="text-rose-300">{ins.emergingDown.length}</b> menurun</> : "tidak ada yang menurun"}. Keyword menaik = kandidat topik yang sedang panas.</Insight>
         </Card>
       </div>
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
         <Card title="Sebaran Keyword dalam Korpus" hint="Jumlah referensi yang memuat tiap keyword.">
           <HBar data={a.keywordCounts.map((k) => ({ label: k.keyword, value: k.docFreq })).sort((x, y) => y.value - x.value)} height={280} />
+          <Insight>{ins.spreadTop ? <>Keyword paling banyak muncul: <b className="text-slate-200">{ins.spreadTop.keyword}</b> ({ins.spreadTop.docFreq} referensi, {ins.pct(ins.spreadTop.docFreq, a.totalCount)}% korpus). Keyword ber-frekuensi sangat rendah mungkin kurang relevan dengan korpus ini.</> : "—"}</Insight>
         </Card>
         <Card title="Tren per Tahun: Korpus vs Relevan" hint="Ungu = seluruh publikasi tiap tahun (seberapa aktif bidangnya). Pink = yang menyinggung keyword Anda. Selisih garis = bagian korpus yang di luar fokus Anda.">
           {yearTrend.length ? <MultiTrend data={yearTrend} height={280} /> : <Empty />}
+          <Insight>Dari {a.totalCount} referensi, {a.matchedCount} ({ins.pct(a.matchedCount, a.totalCount)}%) relevan dengan keyword Anda. {ins.pct(a.matchedCount, a.totalCount) >= 80 ? "Dua garis berimpit → keyword Anda mendominasi korpus (korpus sangat fokus)." : "Selisih garis = bagian korpus di luar fokus Anda."}</Insight>
         </Card>
       </div>
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
         <Card title="Rasio Relevansi per Tahun (%)" hint="Persentase publikasi tiap tahun yang menyinggung keyword Anda — apakah porsi topik Anda menaik atau menurun di dalam bidang.">
           {shareTrend.length ? <TrendLine data={shareTrend} height={260} /> : <Empty />}
+          <Insight>Porsi topik Anda {ins.shareLast >= ins.shareFirst ? <><b className="text-emerald-300">menaik/stabil</b></> : <><b className="text-rose-300">menurun</b></>} — dari {ins.shareFirst}% (awal) ke {ins.shareLast}% (terkini). {ins.shareLast === 100 ? "100% = seluruh korpus memang membahas keyword Anda." : ""}</Insight>
         </Card>
         <Card title="Word Cloud Keyword Korpus" hint={`Ukuran kata ∝ frekuensi. Sumber: ${a.keywordCloud.source}.`}>
           {a.keywordCloud.terms.length ? <WordCloud data={a.keywordCloud.terms} height={300} /> : <Empty text="Tidak ada teks untuk membentuk word cloud." />}
@@ -518,6 +556,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           </div>
         </div>
         <p className="text-xs text-slate-500 mt-3">Fₜ₋₁→Fₜ = frekuensi keyword pada tahun t−1 dan t. Kandidat = istilah lain di korpus yang sedang naik/turun tajam — pertimbangkan menambahkannya sebagai keyword.</p>
+        <Insight>{ins.up.length || ins.down.length ? <>{ins.up.length ? <><b className="text-emerald-300">{ins.up.length} keyword naik</b>{ins.up[0] ? ` (teratas ${ins.up[0].term})` : ""}</> : "tidak ada yang naik"}, {ins.down.length ? <><b className="text-rose-300">{ins.down.length} turun</b></> : "tidak ada yang turun"}. Keyword naik = fokus yang sedang panas; yang turun = pertimbangkan mengganti sudut.</> : "Butuh minimal 2 tahun berbeda untuk menilai momentum."}</Insight>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -549,6 +588,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         </Card>
         <Card title="Thematic Map (Quadrant)" icon={<LayoutGrid className="w-4 h-4" />} hint="Motor (penting & matang), Basic (penting, belum matang), Niche (matang, terisolasi), Emerging/Declining (baru/menurun). Termasuk kandidat korpus; ▲/▼ = momentum.">
           {a.dynamics.thematic.length ? <QuadrantMap points={a.dynamics.thematic} /> : <Empty text="Butuh minimal 2 keyword dengan co-occurrence." />}
+          <Insight>{ins.motor.length ? <>Tema motor (penting & matang): <b className="text-emerald-300">{ins.motor.slice(0, 3).join(", ")}</b>. Untuk kebaruan, incar kuadran <b>Emerging</b> (kiri-bawah).</> : "Belum ada tema motor yang menonjol; sebagian besar tema masih berkembang/terisolasi."}</Insight>
         </Card>
       </div>
 
@@ -624,6 +664,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         ) : (
           <Empty text="Tidak ada penanda jenis gap terdeteksi di abstrak relevan." />
         )}
+        <Insight>{ins.gapTop ? <>Gap paling banyak disinggung: <b className="text-slate-200">{ins.gapTop.name}</b> ({ins.gapTop.count} paper, severity {ins.gapTop.stars}/5). Ini indikasi arah kontribusi yang paling banyak diminta literatur.</> : "Belum terdeteksi jenis gap yang menonjol dari abstrak."}</Insight>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -673,6 +714,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           <FutureCol icon={<TriangleAlert className="w-3.5 h-3.5" />} label="Limitations" group={a.gaps.future.limitations} color="text-amber-300" />
           <FutureCol icon={<ListChecks className="w-3.5 h-3.5" />} label="Recommendations" group={a.gaps.future.recommendations} color="text-emerald-300" />
         </div>
+        <Insight>{a.gaps.future.futureWork.count + a.gaps.future.limitations.count + a.gaps.future.recommendations.count > 0 ? <>{a.gaps.future.futureWork.count} paper menyebut arah riset lanjutan, {a.gaps.future.limitations.count} menyatakan keterbatasan, {a.gaps.future.recommendations.count} memberi rekomendasi — sumber ide paling langsung untuk menentukan kontribusi Anda.</> : "Abstrak korpus tidak eksplisit menyebut future work/limitation/recommendation."}</Insight>
       </Card>
 
       {/* ===== Section 4: Analisis Novelty ===== */}
@@ -690,6 +732,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           ) : (
             <Empty text="Belum ada sinyal dimensi novelty (abstrak terbatas)." />
           )}
+          <Insight>{ins.dimTop ? <>Peluang kebaruan terbesar pada dimensi <b className="text-slate-200">{ins.dimTop.name.replace("Novelty ", "")}</b> (skor {ins.dimTop.score}) — arahkan kontribusi utama ke sana. Klik dimensi untuk lihat kalimat buktinya.</> : "Belum ada sinyal dimensi kebaruan yang kuat."}</Insight>
         </Card>
         <Card title="Innovation Radar" icon={<Radar className="w-4 h-4" />} hint="Visual potensi kebaruan pada 6 poros: Method, Theory, Context, Variable, Technology, Contribution.">
           <InnovationRadar data={a.noveltyExtra.radar} height={280} />
@@ -702,6 +745,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       {/* 4.2 Peluang & area kosong */}
       <Card title="Novelty Opportunity Map" icon={<Grid3x3 className="w-4 h-4" />} hint="Peluang kebaruan tiap pasangan keyword (terang = keduanya ramai diteliti TAPI jarang digabung = peluang tinggi; gelap = sudah sering digabung / salah satu keyword tak ada di korpus)." className="mb-4">
         <Heatmap labels={a.noveltyExtra.oppLabels} matrix={a.noveltyExtra.oppMatrix} annotate />
+        <Insight>{ins.oppBest.v > 0 ? <>Peluang tertinggi: <b className="text-slate-200">{ins.oppBest.a} × {ins.oppBest.b}</b> (skor {ins.oppBest.v}) — keduanya diteliti tapi jarang digabung. Sel gelap = sudah sering digabung atau salah satu keyword tak ada di korpus.</> : "Semua pasangan sudah sering digabung atau keyword kurang muncul di korpus."}</Insight>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -776,7 +820,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         subtitle="Kombinasi topik yang disarankan dan kesesuaiannya dengan judul Anda."
       />
       <Card title="Rekomendasi Kombinasi Topik" icon={<Lightbulb className="w-4 h-4" />} hint="Pasangan keyword jarang digabung namun sedang naik daun = kandidat celah riset." className="mb-4">
-        <HBar data={recData} height={Math.max(220, recData.length * 46)} color="#c084fc" labelWidth={230} />
+        <HBar data={recData} height={Math.max(220, recData.length * 48)} color="#c084fc" labelWidth={300} />
         {a.recommendations[0] && (
           <div className="mt-3 text-sm bg-violet-500/10 border border-violet-400/20 rounded-xl px-4 py-3">
             Arah paling menjanjikan: <b>{a.recommendations[0].combo}</b> (co-occurrence={a.recommendations[0].cooccurrence}, skor={a.recommendations[0].score}).
@@ -851,6 +895,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
             </li>
           ))}
         </ol>
+        <Insight>{a.design.titles[0] ? <>Judul dengan skor tertinggi: <b className="text-slate-200">“{a.design.titles[0].text}”</b> ({a.design.titles[0].score}). Skor mengikuti kombinasi keyword paling menjanjikan (jarang digabung + naik daun) — ini titik awal, sesuaikan dengan minat Anda.</> : "—"}</Insight>
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -930,6 +975,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               </li>
             ))}
           </ul>
+          <Insight>{ins.dsTop ? <>Paling relevan: <b className="text-slate-200">{ins.dsTop.name}</b> ({ins.dsTop.score}). Untuk lit review, tetap manfaatkan Scopus/OpenAlex; padukan dengan sumber domain sesuai keyword.</> : "—"}</Insight>
         </Card>
       </div>
 
@@ -959,6 +1005,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         ) : (
           <Empty text="Tidak ada data tahun." />
         )}
+        <Insight>{ins.peak ? <>Publikasi memuncak tahun <b className="text-slate-200">{ins.peak.year}</b> ({ins.peak.count} paper). {a.litIntel.aiSummary.includes("tumbuh") ? "Tren keseluruhan tumbuh — bidang aktif berkembang." : "Tren melambat belakangan — cek apakah topik mulai jenuh."}</> : "—"}</Insight>
       </Card>
 
       {!a.litIntel.hasCitations && (
@@ -979,6 +1026,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
               </li>
             ))}
           </ol>
+          <Insight>{ins.land ? <>Paper paling berpengaruh: <b className="text-slate-200">{ins.land.title.slice(0, 55)}…</b>{ins.land.year ? ` (${ins.land.year})` : ""}{a.litIntel.hasCitations ? ` — ${ins.land.citations} sitasi.` : " — proksi (RIS tanpa sitasi)."}</> : "—"}</Insight>
         </Card>
         <Card title="Highly Cited Paper" icon={<Quote className="w-4 h-4" />} hint="Top citation. Ringkasan citation network di bawah.">
           {a.litIntel.hasCitations ? (
@@ -1043,6 +1091,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
           ) : (
             <Empty text="Data negara tidak tersedia di RIS ini." />
           )}
+          {ins.countryTop && <Insight>Negara paling aktif: <b className="text-slate-200">{ins.countryTop.name}</b> ({ins.countryTop.count} afiliasi). Berguna untuk memilih mitra kolaborasi/benchmark internasional.</Insight>}
         </Card>
         <Card title="Research Frontier & Emerging Direction" icon={<Compass className="w-4 h-4" />} hint="Frontier = topik terkini (3 tahun terakhir). Emerging = prediksi arah dari burst + rekomendasi.">
           <div className="mb-3">
@@ -1223,6 +1272,15 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function Insight({ children }: { children: React.ReactNode }) {
+  if (!children) return null;
+  return (
+    <div className="mt-3 text-xs text-slate-400 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 leading-relaxed">
+      <b className="text-violet-300/90">Interpretasi:</b> {children}
     </div>
   );
 }

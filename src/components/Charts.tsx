@@ -330,9 +330,11 @@ export function Venn({
 export function FitBars({
   data,
   height = 300,
+  labelWidth = 250,
 }: {
   data: { label: string; recScore: number; titleFitPct: number }[];
   height?: number;
+  labelWidth?: number;
 }) {
   const t = tooltipStyle();
   return (
@@ -343,8 +345,8 @@ export function FitBars({
         <YAxis
           type="category"
           dataKey="label"
-          width={170}
-          tick={(p) => <TruncTick {...p} max={26} />}
+          width={labelWidth}
+          tick={(p) => <TruncTick {...p} max={Math.floor(labelWidth / 6.2)} />}
           interval={0}
           axisLine={false}
           tickLine={false}
