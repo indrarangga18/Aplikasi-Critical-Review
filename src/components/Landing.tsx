@@ -109,11 +109,12 @@ export default function Landing({ onStart }: { onStart: (d: SessionData) => void
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold leading-tight mb-4">
           Ukur <span className="gradient-text">kebaruan riset</span> Anda
-          <br className="hidden sm:block" /> dari file RIS
+          <br className="hidden sm:block" /> dari daftar pustaka
         </h1>
         <p className="text-slate-400 text-base sm:text-lg">
-          Unggah hasil ekspor Scopus/Mendeley/Zotero, tentukan keyword, dan dapatkan Novelty Score,
-          peluang riset, serta rekomendasi kombinasi topik — bisa diunduh & dikirim ke email.
+          Unggah ekspor Scopus/Mendeley/Zotero/PubMed — <b>RIS, BibTeX (.bib), .nbib, atau ZIP</b> (bisa banyak file) —
+          tentukan keyword, dan dapatkan Novelty Score, peluang riset, gap, hingga rekomendasi penelitian yang bisa
+          diunduh (PDF) & dikirim ke email.
         </p>
       </motion.div>
 
