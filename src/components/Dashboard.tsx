@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Award,
@@ -40,6 +40,7 @@ import {
   X,
 } from "lucide-react";
 import { runAnalysis, type GroupWithRefs } from "@/lib/analysis";
+import { registerSynonymGroups } from "@/lib/terms";
 import { buildReportHtml } from "@/lib/report";
 import { DivergingBar, FitBars, GroupedBar, HBar, Heatmap, InnovationRadar, MultiTrend, QuadrantMap, TrendLine, Venn, WordCloud } from "@/components/Charts";
 import type { SessionData } from "@/components/Landing";
@@ -58,7 +59,39 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const a = useMemo(() => runAnalysis(data.records, keywords, judul, topik), [data.records, keywords, judul, topik]);
+  // AI semantic keyword expansion (bilingual + synonyms, beyond the glossary).
+  const [semantic, setSemantic] = useState<{ status: "idle" | "loading" | "on" | "off" | "error"; note?: string }>({ status: "idle" });
+  const [enrichVersion, setEnrichVersion] = useState(0);
+  const [synonymGroups, setSynonymGroups] = useState<string[][]>([]);
+  const fetchedRef = useRef<string>("");
+
+  useEffect(() => {
+    const key = keywords.join("|");
+    if (fetchedRef.current === key) return;
+    fetchedRef.current = key;
+    setSemantic({ status: "loading" });
+    fetch("/api/expand-keywords", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keywords, topik }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok && j.configured && Array.isArray(j.groups) && j.groups.length) {
+          registerSynonymGroups(j.groups);
+          setSynonymGroups(j.groups);
+          setEnrichVersion((v) => v + 1);
+          setSemantic({ status: "on", note: `${j.groups.length} keyword diperkaya AI` });
+        } else if (j.ok && j.configured === false) {
+          setSemantic({ status: "off" });
+        } else {
+          setSemantic({ status: "error", note: j.error });
+        }
+      })
+      .catch(() => setSemantic({ status: "error" }));
+  }, [keywords, topik]);
+
+  const a = useMemo(() => runAnalysis(data.records, keywords, judul, topik), [data.records, keywords, judul, topik, enrichVersion]);
 
   // Merge corpus-total and keyword-relevant counts per year for comparison.
   const yearTrend = useMemo(() => {
@@ -126,7 +159,7 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
       const res = await fetch("/api/send-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ records: data.records, keywords: data.keywords, meta }),
+        body: JSON.stringify({ records: data.records, keywords, meta, synonymGroups }),
       });
       const json = await res.json();
       if (res.ok && json.ok) setToast({ ok: true, msg: `Laporan terkirim ke ${data.email}.` });
@@ -150,8 +183,9 @@ export default function Dashboard({ data, onReset }: { data: SessionData; onRese
         <div>
           <p className="text-xs uppercase tracking-wide text-violet-300/80 mb-1">Laporan Critical Review</p>
           <h1 className="text-2xl sm:text-3xl font-bold">{judul || "(tanpa judul)"}</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {topik} • {a.totalCount} referensi • {data.name}
+          <p className="text-slate-400 text-sm mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>{topik} • {a.totalCount} referensi • {data.name}</span>
+            <SemanticBadge state={semantic} />
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -954,6 +988,23 @@ function DrillList({ groups, showSource = false }: { groups: GroupWithRefs[]; sh
         );
       })}
     </div>
+  );
+}
+
+function SemanticBadge({ state }: { state: { status: string; note?: string } }) {
+  const map: Record<string, { label: string; cls: string; title: string }> = {
+    idle: { label: "", cls: "", title: "" },
+    loading: { label: "AI semantic: memuat…", cls: "bg-white/5 text-slate-400 border-white/10", title: "Memperkaya keyword dengan AI" },
+    on: { label: `AI semantic: aktif`, cls: "bg-emerald-500/15 text-emerald-300 border-emerald-400/25", title: state.note || "Keyword diperkaya padanan lintas-bahasa & sinonim oleh AI" },
+    off: { label: "AI semantic: nonaktif", cls: "bg-white/5 text-slate-400 border-white/10", title: "Set ANTHROPIC_API_KEY untuk mengaktifkan; kini memakai glosarium bawaan" },
+    error: { label: "AI semantic: gagal", cls: "bg-amber-500/15 text-amber-300 border-amber-400/25", title: state.note || "Gagal memanggil model; memakai glosarium bawaan" },
+  };
+  const m = map[state.status];
+  if (!m || !m.label) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5 border ${m.cls}`} title={m.title}>
+      <Sparkles className="w-3 h-3" /> {m.label}
+    </span>
   );
 }
 

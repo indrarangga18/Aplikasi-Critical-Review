@@ -129,3 +129,21 @@ export function canonicalizeText(text: string): string {
 export function canonLabel(token: string): string {
   return CANON_LABEL.get(token) || token;
 }
+
+/** Register extra synonym groups at runtime (e.g. from the LLM keyword expander).
+ *  Enriches BOTH the matching layer (expandTerm) and canonicalisation (similarity). */
+export function registerSynonymGroups(groups: string[][]): void {
+  for (const raw of groups) {
+    const group = Array.from(new Set(raw.map((g) => String(g).trim().toLowerCase()).filter(Boolean)));
+    if (group.length < 2) continue;
+    const canon = group[0].replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (!canon) continue;
+    CANON_LABEL.set(canon, group[0]);
+    for (const form of group) {
+      GROUP_INDEX.set(form, group);
+      CANON_PAIRS.push([form, canon]);
+    }
+  }
+  CANON_PAIRS.sort((a, b) => b[0].length - a[0].length);
+  expandCache.clear(); // invalidate memoised expansions
+}

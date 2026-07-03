@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { runAnalysis } from "@/lib/analysis";
+import { registerSynonymGroups } from "@/lib/terms";
 import { buildReportHtml, type ReportMeta } from "@/lib/report";
 import type { RisRecord } from "@/lib/ris";
 
@@ -11,6 +12,7 @@ interface Payload {
   records: RisRecord[];
   keywords: string[];
   meta: Omit<ReportMeta, "generatedAt">;
+  synonymGroups?: string[][];
 }
 
 export async function POST(req: NextRequest) {
@@ -46,6 +48,15 @@ export async function POST(req: NextRequest) {
     timeStyle: "short",
   });
   const fullMeta: ReportMeta = { ...meta, generatedAt };
+
+  // Match the dashboard's AI-enriched synonyms so the emailed report is consistent.
+  if (Array.isArray(body.synonymGroups) && body.synonymGroups.length) {
+    try {
+      registerSynonymGroups(body.synonymGroups);
+    } catch {
+      /* ignore malformed groups */
+    }
+  }
 
   const analysis = runAnalysis(records, keywords, meta.judul, meta.topik);
   const html = buildReportHtml(analysis, fullMeta);
